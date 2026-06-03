@@ -19,6 +19,7 @@ jpackage \
   --input "$ROOT_DIR/target" \
   --main-jar txt2docx.jar \
   --main-class com.tools.txt2docx.Main \
-  --dest "$DIST_DIR"
+  --dest "$DIST_DIR" \
+  --icon macos.icns
 
 echo "macOS 安装包输出到: $DIST_DIR"
