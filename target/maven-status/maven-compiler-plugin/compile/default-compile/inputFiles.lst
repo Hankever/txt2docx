@@ -1,0 +1,10 @@
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/Main.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/batch/BatchItem.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/batch/BatchProcessor.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/batch/ConversionResult.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/cli/CliArguments.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/cli/CliRunner.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/converter/ConversionOptions.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/converter/EncodingDetector.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/converter/TxtToDocxConverter.java
+/Users/gqh/IdeaProjects/tool/src/main/java/com/tools/txt2docx/ui/MainFrame.java
