@@ -20,8 +20,7 @@ jpackage ^
   --dest dist\windows ^
   --win-dir-chooser ^
   --win-menu ^
-  --win-shortcut ^
-  --icon windows.ico
+  --win-shortcut
 
 if errorlevel 1 exit /b 1
 
