@@ -24,7 +24,8 @@ jpackage ^
   --icon windows.ico ^
   --win-dir-chooser ^
   --win-menu ^
-  --win-shortcut
+  --win-shortcut ^
+  --icon macos.icns
 
 if errorlevel 1 exit /b 1
 
