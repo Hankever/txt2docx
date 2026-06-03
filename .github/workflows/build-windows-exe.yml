@@ -20,12 +20,35 @@ jobs:
       - name: Install WiX
         run: choco install wixtoolset --no-progress -y
 
+      - name: Show tool versions
+        shell: pwsh
+        run: |
+          java -version
+          mvn -version
+          jpackage --version
+
       - name: Build fat jar
         run: mvn -B clean package
+
+      - name: Verify build output
+        shell: pwsh
+        run: |
+          if (-not (Test-Path target/txt2docx.jar)) {
+            Write-Error "target/txt2docx.jar was not created"
+          }
+          Get-ChildItem target
 
       - name: Create EXE installer
         shell: cmd
         run: scripts\package-windows.bat
+
+      - name: Verify installer output
+        shell: pwsh
+        run: |
+          if (-not (Get-ChildItem dist/windows/*.exe -ErrorAction SilentlyContinue)) {
+            Write-Error "No EXE installer was generated"
+          }
+          Get-ChildItem dist/windows
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

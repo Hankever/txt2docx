@@ -2,8 +2,11 @@
 setlocal
 
 cd /d %~dp0\..
-call mvn clean package
-if errorlevel 1 exit /b 1
+
+if not exist target\txt2docx.jar (
+  echo Missing target\txt2docx.jar. Run "mvn clean package" before packaging.
+  exit /b 1
+)
 
 if exist dist\windows rmdir /s /q dist\windows
 mkdir dist\windows
@@ -18,6 +21,7 @@ jpackage ^
   --main-jar txt2docx.jar ^
   --main-class com.tools.txt2docx.Main ^
   --dest dist\windows ^
+  --icon windows.ico ^
   --win-dir-chooser ^
   --win-menu ^
   --win-shortcut
