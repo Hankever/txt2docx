@@ -15,6 +15,8 @@ import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TxtToDocxConverter {
 
@@ -33,7 +35,7 @@ public class TxtToDocxConverter {
         try (XWPFDocument doc = new XWPFDocument();
              OutputStream out = Files.newOutputStream(outputDocx)) {
             applyPageMargins(doc);
-            writeParagraphs(doc, text);
+            writeParagraphs(doc, formatText(text));
             doc.write(out);
         }
     }
@@ -63,22 +65,30 @@ public class TxtToDocxConverter {
         pageMar.setRight(BigInteger.valueOf(cmToTwips(options.getMarginRightCm())));
     }
 
-    private void writeParagraphs(XWPFDocument doc, String text) throws IOException {
+    private List<String> formatText(String text) throws IOException {
         try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
+            List<String> lines = new ArrayList<>();
             String line;
-            boolean any = false;
             while ((line = reader.readLine()) != null) {
-                any = true;
-                XWPFParagraph p = doc.createParagraph();
-                XWPFRun run = p.createRun();
-                applyFont(run);
-                if (!line.isEmpty()) {
-                    run.setText(line);
-                }
+                lines.add(line);
             }
-            if (!any) {
-                XWPFParagraph p = doc.createParagraph();
-                applyFont(p.createRun());
+            return TextFormatter.formatLines(lines, options);
+        }
+    }
+
+    private void writeParagraphs(XWPFDocument doc, List<String> lines) {
+        if (lines.isEmpty()) {
+            XWPFParagraph p = doc.createParagraph();
+            applyFont(p.createRun());
+            return;
+        }
+
+        for (String line : lines) {
+            XWPFParagraph p = doc.createParagraph();
+            XWPFRun run = p.createRun();
+            applyFont(run);
+            if (!line.isEmpty()) {
+                run.setText(line);
             }
         }
     }

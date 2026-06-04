@@ -1,12 +1,13 @@
 # Txt2Docx
 
-Java 实现的 TXT 批量转 DOCX 工具，支持桌面界面和命令行两种使用方式。
+Java 实现的 TXT / DOCX 批量互转工具，支持桌面界面和命令行两种使用方式。
 
 ## 功能
 
-- 批量选择多个 `txt` 文件或整个目录进行转换
+- 批量选择多个 `txt` / `docx` 文件或整个目录进行转换
 - 自动识别常见文本编码，也可手动指定编码
 - 可设置字体、字号、页边距
+- 可按需删除空格、删除空行、设置每行缩进、在行间插入空行
 - 支持递归扫描子目录
 - 默认保留输入目录结构，避免批量转换时同名文件互相覆盖
 - 生成单文件可运行的 fat jar，便于分发
@@ -41,10 +42,45 @@ CLI 模式：
 java -jar target/txt2docx.jar --input ./txt --output ./docx --recursive
 ```
 
+DOCX 转 TXT：
+
+```bash
+java -jar target/txt2docx.jar --mode docx2txt --input ./docx --output ./txt --recursive
+```
+
+带格式选项的 TXT 转 DOCX：
+
+```bash
+java -jar target/txt2docx.jar \
+  --input ./txt \
+  --output ./docx \
+  --recursive \
+  --remove-spaces \
+  --remove-empty-lines \
+  --indent 2 \
+  --blank-line-between-lines
+```
+
 更多参数：
 
 ```bash
 java -jar target/txt2docx.jar --help
+```
+
+文本处理参数说明：
+
+- `--remove-spaces` 删除每行中的空格和制表符
+- `--remove-empty-lines` 删除空行
+- `--indent <n>` 每行前添加 `n` 个全角空格，`2` 即常见中文段首缩进
+- `--blank-line-between-lines` 在相邻文本行之间插入一空行
+
+构建提示：
+
+- 如果 `mvn package` 报 `invalid target release: 17` 或 `无效的目标发行版: 17`，说明 Maven 没有使用 JDK 17。
+- 可以显式指定：
+
+```bash
+JAVA_HOME=/Users/gqh/jdk/jdk17/Contents/Home mvn clean package
 ```
 
 ## 打包发布

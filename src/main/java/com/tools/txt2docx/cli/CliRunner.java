@@ -2,6 +2,7 @@ package com.tools.txt2docx.cli;
 
 import com.tools.txt2docx.batch.BatchItem;
 import com.tools.txt2docx.batch.BatchProcessor;
+import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
 import com.tools.txt2docx.converter.ConversionOptions;
 
@@ -32,20 +33,20 @@ public final class CliRunner {
             return 0;
         }
 
-        BatchProcessor processor = new BatchProcessor(cliArgs.options());
+        BatchProcessor processor = new BatchProcessor(cliArgs.options(), cliArgs.mode());
         try {
             Files.createDirectories(cliArgs.outputDir());
-            List<BatchItem> items = processor.collectTxtFiles(
+            List<BatchItem> items = processor.collectFiles(
                     cliArgs.inputs(),
                     cliArgs.recursive(),
                     cliArgs.preserveDirectoryStructure()
             );
             if (items.isEmpty()) {
-                out.println("未找到任何 .txt 文件");
+                out.println("未找到任何 " + sourceExtension(cliArgs.mode()) + " 文件");
                 return 0;
             }
 
-            out.println("共找到 " + items.size() + " 个 .txt 文件，开始转换...");
+            out.println("共找到 " + items.size() + " 个 " + sourceExtension(cliArgs.mode()) + " 文件，开始转换...");
             List<ConversionResult> results = processor.process(
                     items,
                     cliArgs.outputDir(),
@@ -99,6 +100,7 @@ public final class CliRunner {
     private static CliArguments parse(String[] args) {
         List<Path> inputs = new ArrayList<>();
         Path outputDir = null;
+        ConversionMode mode = ConversionMode.TXT_TO_DOCX;
         boolean recursive = false;
         boolean overwrite = false;
         boolean preserveDirectoryStructure = true;
@@ -112,6 +114,7 @@ public final class CliRunner {
                 case "-h", "--help" -> showHelp = true;
                 case "-i", "--input" -> inputs.add(Path.of(requireValue(args, ++i, arg)));
                 case "-o", "--output" -> outputDir = Path.of(requireValue(args, ++i, arg));
+                case "--mode" -> mode = parseMode(args, ++i, arg);
                 case "-r", "--recursive" -> recursive = true;
                 case "--overwrite" -> overwrite = true;
                 case "--flatten" -> preserveDirectoryStructure = false;
@@ -123,6 +126,10 @@ public final class CliRunner {
                 case "--margin-bottom" -> options.setMarginBottomCm(parseDouble(args, ++i, arg));
                 case "--margin-left" -> options.setMarginLeftCm(parseDouble(args, ++i, arg));
                 case "--margin-right" -> options.setMarginRightCm(parseDouble(args, ++i, arg));
+                case "--remove-spaces" -> options.setRemoveSpaces(true);
+                case "--remove-empty-lines" -> options.setRemoveEmptyLines(true);
+                case "--indent" -> options.setIndentSize(parseNonNegativeInt(args, ++i, arg));
+                case "--blank-line-between-lines" -> options.setAddBlankLineBetweenLines(true);
                 default -> throw new IllegalArgumentException("不支持的参数: " + arg);
             }
         }
@@ -136,7 +143,7 @@ public final class CliRunner {
             }
         }
 
-        return new CliArguments(inputs, outputDir, recursive, overwrite, preserveDirectoryStructure, showHelp, options);
+        return new CliArguments(inputs, outputDir, mode, recursive, overwrite, preserveDirectoryStructure, showHelp, options);
     }
 
     private static String requireValue(String[] args, int index, String option) {
@@ -155,6 +162,14 @@ public final class CliRunner {
         }
     }
 
+    private static int parseNonNegativeInt(String[] args, int index, String option) {
+        int value = parseInt(args, index, option);
+        if (value < 0) {
+            throw new IllegalArgumentException(option + " 不能小于 0");
+        }
+        return value;
+    }
+
     private static double parseDouble(String[] args, int index, String option) {
         String value = requireValue(args, index, option);
         try {
@@ -164,8 +179,21 @@ public final class CliRunner {
         }
     }
 
+    private static ConversionMode parseMode(String[] args, int index, String option) {
+        String value = requireValue(args, index, option);
+        return switch (value.toLowerCase()) {
+            case "txt2docx", "txt-to-docx" -> ConversionMode.TXT_TO_DOCX;
+            case "docx2txt", "docx-to-txt" -> ConversionMode.DOCX_TO_TXT;
+            default -> throw new IllegalArgumentException(option + " 仅支持 txt2docx 或 docx2txt: " + value);
+        };
+    }
+
+    private static String sourceExtension(ConversionMode mode) {
+        return mode == ConversionMode.DOCX_TO_TXT ? ".docx" : ".txt";
+    }
+
     private static void printUsage(PrintStream out) {
-        out.println("TXT 批量转 DOCX");
+        out.println("TXT / DOCX 批量互转");
         out.println();
         out.println("GUI 模式:");
         out.println("  java -jar target/txt2docx.jar");
@@ -173,11 +201,12 @@ public final class CliRunner {
         out.println();
         out.println("CLI 模式:");
         out.println("  java -jar target/txt2docx.jar --input ./txt --output ./docx --recursive");
-        out.println("  java -jar target/txt2docx.jar -i a.txt -i b.txt -o ./out --encoding UTF-8");
+        out.println("  java -jar target/txt2docx.jar --mode docx2txt -i a.docx -o ./out --encoding UTF-8");
         out.println();
         out.println("参数:");
         out.println("  -i, --input <path>       输入文件或目录，可重复");
         out.println("  -o, --output <dir>      输出目录");
+        out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt");
         out.println("  -r, --recursive         递归扫描子目录");
         out.println("      --overwrite         允许覆盖已存在的输出文件");
         out.println("      --flatten           不保留输入目录结构");
@@ -189,6 +218,10 @@ public final class CliRunner {
         out.println("      --margin-bottom <cm>下边距，默认 2.54");
         out.println("      --margin-left <cm>  左边距，默认 3.18");
         out.println("      --margin-right <cm> 右边距，默认 3.18");
+        out.println("      --remove-spaces     删除每行中的空格和制表符");
+        out.println("      --remove-empty-lines 删除空行");
+        out.println("      --indent <n>        每行前添加 n 个全角空格");
+        out.println("      --blank-line-between-lines  行与行之间插入一空行");
         out.println("  -h, --help              显示帮助");
     }
 }

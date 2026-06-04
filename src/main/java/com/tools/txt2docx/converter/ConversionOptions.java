@@ -8,6 +8,10 @@ public class ConversionOptions {
     private double marginLeftCm = 3.18;
     private double marginRightCm = 3.18;
     private String encoding = "AUTO";
+    private boolean removeSpaces;
+    private boolean removeEmptyLines;
+    private int indentSize = 0;
+    private boolean addBlankLineBetweenLines;
 
     public String getFontFamily() { return fontFamily; }
     public void setFontFamily(String fontFamily) { this.fontFamily = fontFamily; }
@@ -29,4 +33,16 @@ public class ConversionOptions {
 
     public String getEncoding() { return encoding; }
     public void setEncoding(String encoding) { this.encoding = encoding; }
+
+    public boolean isRemoveSpaces() { return removeSpaces; }
+    public void setRemoveSpaces(boolean removeSpaces) { this.removeSpaces = removeSpaces; }
+
+    public boolean isRemoveEmptyLines() { return removeEmptyLines; }
+    public void setRemoveEmptyLines(boolean removeEmptyLines) { this.removeEmptyLines = removeEmptyLines; }
+
+    public int getIndentSize() { return indentSize; }
+    public void setIndentSize(int indentSize) { this.indentSize = Math.max(0, indentSize); }
+
+    public boolean isAddBlankLineBetweenLines() { return addBlankLineBetweenLines; }
+    public void setAddBlankLineBetweenLines(boolean addBlankLineBetweenLines) { this.addBlankLineBetweenLines = addBlankLineBetweenLines; }
 }

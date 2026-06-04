@@ -2,6 +2,7 @@ package com.tools.txt2docx.ui;
 
 import com.tools.txt2docx.batch.BatchProcessor;
 import com.tools.txt2docx.batch.BatchItem;
+import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
 import com.tools.txt2docx.converter.ConversionOptions;
 
@@ -46,16 +47,21 @@ public class MainFrame extends JFrame {
     private final JTextArea logArea = new JTextArea();
     private final JProgressBar progressBar = new JProgressBar();
 
+    private final JComboBox<String> modeBox = new JComboBox<>(new String[]{"TXT -> DOCX", "DOCX -> TXT"});
     private final JComboBox<String> fontBox = new JComboBox<>(new String[]{"宋体", "微软雅黑", "黑体", "楷体", "仿宋", "Times New Roman", "Arial"});
     private final JSpinner fontSizeSpinner = new JSpinner(new SpinnerNumberModel(12, 6, 72, 1));
     private final JSpinner marginTopSpinner = new JSpinner(new SpinnerNumberModel(2.54, 0.0, 10.0, 0.1));
     private final JSpinner marginBottomSpinner = new JSpinner(new SpinnerNumberModel(2.54, 0.0, 10.0, 0.1));
     private final JSpinner marginLeftSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
     private final JSpinner marginRightSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
+    private final JSpinner indentSpinner = new JSpinner(new SpinnerNumberModel(2, 0, 10, 1));
     private final JComboBox<String> encodingBox = new JComboBox<>(new String[]{"AUTO", "UTF-8", "GBK", "GB2312", "GB18030", "UTF-16LE", "UTF-16BE", "Big5"});
     private final JCheckBox recursiveBox = new JCheckBox("递归子目录", true);
     private final JCheckBox preserveTreeBox = new JCheckBox("保留目录结构", true);
     private final JCheckBox overwriteBox = new JCheckBox("覆盖已有文件", false);
+    private final JCheckBox removeSpacesBox = new JCheckBox("删除空格", true);
+    private final JCheckBox removeEmptyLinesBox = new JCheckBox("删除空行", true);
+    private final JCheckBox blankLineBetweenLinesBox = new JCheckBox("行间加空行", true);
 
     private final JButton addFilesBtn = new JButton("添加文件...");
     private final JButton addDirBtn = new JButton("添加目录...");
@@ -72,10 +78,11 @@ public class MainFrame extends JFrame {
     public MainFrame() {
         super("TXT 批量转 DOCX 工具");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        setSize(900, 640);
-        setMinimumSize(new Dimension(720, 520));
+        setSize(980, 760);
+        setMinimumSize(new Dimension(820, 620));
         setLocationRelativeTo(null);
 
+        applyOptionFieldSizes();
         setContentPane(buildContent());
         wireActions();
         cancelBtn.setEnabled(false);
@@ -108,43 +115,90 @@ public class MainFrame extends JFrame {
     }
 
     private JPanel buildOptionsPanel() {
-        JPanel p = new JPanel(new GridBagLayout());
-        p.setBorder(BorderFactory.createTitledBorder("格式与选项"));
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(3, 5, 3, 5);
-        c.anchor = GridBagConstraints.WEST;
-        c.fill = GridBagConstraints.HORIZONTAL;
+        JPanel p = new JPanel(new BorderLayout(8, 8));
+        p.setBorder(BorderFactory.createTitledBorder("转换设置"));
+        JPanel top = new JPanel(new BorderLayout(8, 0));
+        top.add(buildBasicOptionsSection(), BorderLayout.WEST);
+        top.add(buildLayoutOptionsSection(), BorderLayout.CENTER);
+        p.add(top, BorderLayout.NORTH);
+        p.add(buildCheckboxSection(), BorderLayout.CENTER);
+        return p;
+    }
 
-        int row = 0;
-        addLabel(p, c, 0, row, "字体");
-        addField(p, c, 1, row, fontBox);
-        addLabel(p, c, 2, row, "字号");
-        addField(p, c, 3, row, fontSizeSpinner);
-        addLabel(p, c, 4, row, "编码");
-        addField(p, c, 5, row, encodingBox);
+    private JPanel buildBasicOptionsSection() {
+        JPanel p = createSectionPanel("基础");
+        GridBagConstraints c = baseConstraints();
 
-        row++;
-        addLabel(p, c, 0, row, "上边距(cm)");
-        addField(p, c, 1, row, marginTopSpinner);
-        addLabel(p, c, 2, row, "下边距(cm)");
-        addField(p, c, 3, row, marginBottomSpinner);
-        addLabel(p, c, 4, row, "左边距(cm)");
-        addField(p, c, 5, row, marginLeftSpinner);
+        addLabel(p, c, 0, 0, "转换方向");
+        addField(p, c, 1, 0, modeBox);
+        addLabel(p, c, 2, 0, "编码");
+        addField(p, c, 3, 0, encodingBox);
 
-        row++;
-        addLabel(p, c, 0, row, "右边距(cm)");
-        addField(p, c, 1, row, marginRightSpinner);
-        c.gridx = 2; c.gridy = row; c.gridwidth = 2;
-        p.add(recursiveBox, c);
-        c.gridx = 4; c.gridy = row; c.gridwidth = 2;
-        p.add(preserveTreeBox, c);
-
-        row++;
-        c.gridx = 0; c.gridy = row; c.gridwidth = 2;
-        p.add(overwriteBox, c);
-        c.gridwidth = 1;
+        addLabel(p, c, 0, 1, "字体");
+        addField(p, c, 1, 1, fontBox);
+        addLabel(p, c, 2, 1, "字号");
+        addField(p, c, 3, 1, fontSizeSpinner);
 
         return p;
+    }
+
+    private JPanel buildLayoutOptionsSection() {
+        JPanel p = createSectionPanel("版式");
+        GridBagConstraints c = baseConstraints();
+
+        addLabel(p, c, 0, 0, "文本缩进");
+        addField(p, c, 1, 0, indentSpinner);
+        addLabel(p, c, 2, 0, "上边距(cm)");
+        addField(p, c, 3, 0, marginTopSpinner);
+
+        addLabel(p, c, 0, 1, "下边距(cm)");
+        addField(p, c, 1, 1, marginBottomSpinner);
+        addLabel(p, c, 2, 1, "左边距(cm)");
+        addField(p, c, 3, 1, marginLeftSpinner);
+
+        addLabel(p, c, 0, 2, "右边距(cm)");
+        addField(p, c, 1, 2, marginRightSpinner);
+
+        return p;
+    }
+
+    private JPanel buildCheckboxSection() {
+        JPanel p = createSectionPanel("选项");
+        GridBagConstraints c = baseConstraints();
+
+        c.gridx = 0; c.gridy = 0; c.gridwidth = 1;
+        p.add(removeSpacesBox, c);
+        c.gridx = 1; c.gridy = 0; c.gridwidth = 1;
+        p.add(removeEmptyLinesBox, c);
+        c.gridx = 2; c.gridy = 0; c.gridwidth = 1;
+        p.add(blankLineBetweenLinesBox, c);
+
+        c.gridx = 0; c.gridy = 1; c.gridwidth = 1;
+        p.add(recursiveBox, c);
+        c.gridx = 1; c.gridy = 1; c.gridwidth = 1;
+        p.add(preserveTreeBox, c);
+        c.gridx = 2; c.gridy = 1; c.gridwidth = 1;
+        p.add(overwriteBox, c);
+
+        return p;
+    }
+
+    private JPanel createSectionPanel(String title) {
+        JPanel p = new JPanel(new GridBagLayout());
+        p.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder(title),
+                BorderFactory.createEmptyBorder(4, 6, 4, 6)
+        ));
+        return p;
+    }
+
+    private GridBagConstraints baseConstraints() {
+        GridBagConstraints c = new GridBagConstraints();
+        c.insets = new Insets(4, 6, 4, 10);
+        c.anchor = GridBagConstraints.WEST;
+        c.fill = GridBagConstraints.HORIZONTAL;
+        c.weightx = 1.0;
+        return c;
     }
 
     private void addLabel(JPanel p, GridBagConstraints c, int x, int y, String text) {
@@ -153,8 +207,29 @@ public class MainFrame extends JFrame {
     }
 
     private void addField(JPanel p, GridBagConstraints c, int x, int y, java.awt.Component comp) {
-        c.gridx = x; c.gridy = y; c.weightx = 1.0;
+        c.gridx = x; c.gridy = y; c.weightx = 0;
+        c.fill = GridBagConstraints.NONE;
         p.add(comp, c);
+        c.fill = GridBagConstraints.HORIZONTAL;
+    }
+
+    private void applyOptionFieldSizes() {
+        setCompactWidth(modeBox, 150);
+        setCompactWidth(fontBox, 120);
+        setCompactWidth(fontSizeSpinner, 90);
+        setCompactWidth(marginTopSpinner, 90);
+        setCompactWidth(marginBottomSpinner, 90);
+        setCompactWidth(marginLeftSpinner, 90);
+        setCompactWidth(marginRightSpinner, 90);
+        setCompactWidth(indentSpinner, 90);
+        setCompactWidth(encodingBox, 120);
+    }
+
+    private void setCompactWidth(java.awt.Component comp, int width) {
+        Dimension preferred = comp.getPreferredSize();
+        Dimension size = new Dimension(width, preferred.height);
+        comp.setPreferredSize(size);
+        comp.setMinimumSize(size);
     }
 
     private JSplitPane buildCenterSplit() {
@@ -198,12 +273,18 @@ public class MainFrame extends JFrame {
         chooseOutputBtn.addActionListener(e -> onChooseOutput());
         convertBtn.addActionListener(e -> onConvert());
         cancelBtn.addActionListener(e -> onCancel());
+        modeBox.addActionListener(e -> refreshModeDependentUi());
+        refreshModeDependentUi();
     }
 
     private void onAddFiles() {
         JFileChooser fc = new JFileChooser();
         fc.setMultiSelectionEnabled(true);
-        fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
+        if (getSelectedMode() == ConversionMode.DOCX_TO_TXT) {
+            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Word 文件 (*.docx)", "docx"));
+        } else {
+            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
+        }
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             for (File f : fc.getSelectedFiles()) {
                 addInputPath(f.toPath());
@@ -256,8 +337,9 @@ public class MainFrame extends JFrame {
         boolean recursive = recursiveBox.isSelected();
         boolean preserveTree = preserveTreeBox.isSelected();
         boolean overwrite = overwriteBox.isSelected();
+        ConversionMode mode = getSelectedMode();
 
-        currentProcessor = new BatchProcessor(options);
+        currentProcessor = new BatchProcessor(options, mode);
         List<Path> snapshot = new ArrayList<>(inputPaths);
 
         logArea.setText("");
@@ -272,9 +354,9 @@ public class MainFrame extends JFrame {
             @Override
             protected Void doInBackground() {
                 try {
-                    List<BatchItem> files = currentProcessor.collectTxtFiles(snapshot, recursive, preserveTree);
+                    List<BatchItem> files = currentProcessor.collectFiles(snapshot, recursive, preserveTree);
                     total = files.size();
-                    publish("共找到 " + total + " 个 .txt 文件");
+                    publish("共找到 " + total + " 个" + (mode == ConversionMode.DOCX_TO_TXT ? " .docx " : " .txt ") + "文件");
                     if (total == 0) return null;
                     progressBar.setMaximum(total);
                     currentProcessor.process(files, outputDir, overwrite, (done, tot, last) -> {
@@ -324,7 +406,27 @@ public class MainFrame extends JFrame {
         o.setMarginLeftCm(((Number) marginLeftSpinner.getValue()).doubleValue());
         o.setMarginRightCm(((Number) marginRightSpinner.getValue()).doubleValue());
         o.setEncoding((String) encodingBox.getSelectedItem());
+        o.setRemoveSpaces(removeSpacesBox.isSelected());
+        o.setRemoveEmptyLines(removeEmptyLinesBox.isSelected());
+        o.setIndentSize(((Number) indentSpinner.getValue()).intValue());
+        o.setAddBlankLineBetweenLines(blankLineBetweenLinesBox.isSelected());
         return o;
+    }
+
+    private ConversionMode getSelectedMode() {
+        return modeBox.getSelectedIndex() == 1 ? ConversionMode.DOCX_TO_TXT : ConversionMode.TXT_TO_DOCX;
+    }
+
+    private void refreshModeDependentUi() {
+        boolean txtToDocx = getSelectedMode() == ConversionMode.TXT_TO_DOCX;
+        fontBox.setEnabled(txtToDocx);
+        fontSizeSpinner.setEnabled(txtToDocx);
+        marginTopSpinner.setEnabled(txtToDocx);
+        marginBottomSpinner.setEnabled(txtToDocx);
+        marginLeftSpinner.setEnabled(txtToDocx);
+        marginRightSpinner.setEnabled(txtToDocx);
+        addFilesBtn.setText(txtToDocx ? "添加 TXT..." : "添加 DOCX...");
+        setTitle(txtToDocx ? "TXT 批量转 DOCX 工具" : "DOCX 批量转 TXT 工具");
     }
 
     private String formatResult(ConversionResult r) {
