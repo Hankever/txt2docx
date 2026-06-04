@@ -9,8 +9,8 @@
     <version>1.0.0</version>
     <packaging>jar</packaging>
 
-    <name>Txt2Docx</name>
-    <description>批量 TXT 转 DOCX 工具</description>
+    <name>贰拾</name>
+    <description>贰拾文档转换工具</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
