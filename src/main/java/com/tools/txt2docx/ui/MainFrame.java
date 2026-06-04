@@ -95,7 +95,7 @@ public class MainFrame extends JFrame {
     private BatchProcessor currentProcessor;
 
     public MainFrame() {
-        super("贰拾 - TXT 批量转 DOCX 工具");
+        super("TXT 批量转 DOCX 工具");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(980, 760);
         setMinimumSize(new Dimension(820, 620));
@@ -495,7 +495,7 @@ public class MainFrame extends JFrame {
         marginLeftSpinner.setEnabled(txtToDocx);
         marginRightSpinner.setEnabled(txtToDocx);
         addFilesBtn.setText(txtToDocx ? "添加 TXT..." : "添加 DOCX...");
-        setTitle(txtToDocx ? "贰拾 - TXT 批量转 DOCX 工具" : "贰拾 - DOCX 批量转 TXT 工具");
+        setTitle(txtToDocx ? "TXT 批量转 DOCX 工具" : "DOCX 批量转 TXT 工具");
     }
 
     private String formatResult(ConversionResult r) {

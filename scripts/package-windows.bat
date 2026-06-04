@@ -13,10 +13,10 @@ mkdir dist\windows
 
 jpackage ^
   --type exe ^
-  --name 贰拾 ^
+  --name Txt2Docx ^
   --app-version 1.0.0 ^
   --vendor com.tools ^
-  --description "贰拾文档转换工具" ^
+  --description "TXT 批量转 DOCX 工具" ^
   --input target ^
   --main-jar txt2docx.jar ^
   --main-class com.tools.txt2docx.Main ^
