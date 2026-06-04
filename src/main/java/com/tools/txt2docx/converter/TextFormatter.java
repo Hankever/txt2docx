@@ -10,15 +10,11 @@ public final class TextFormatter {
 
     public static List<String> formatLines(List<String> inputLines, ConversionOptions options) {
         List<String> normalized = new ArrayList<>();
-        String indent = buildIndent(options.getIndentSize());
 
         for (String rawLine : inputLines) {
             String line = options.isRemoveSpaces() ? removeInlineSpaces(rawLine) : rawLine;
             if (options.isRemoveEmptyLines() && line.isBlank()) {
                 continue;
-            }
-            if (!line.isEmpty() && !indent.isEmpty()) {
-                line = indent + line;
             }
             normalized.add(line);
         }
@@ -39,12 +35,5 @@ public final class TextFormatter {
 
     private static String removeInlineSpaces(String line) {
         return line.replaceAll("[\\p{Z}\\t]+", "");
-    }
-
-    private static String buildIndent(int count) {
-        if (count <= 0) {
-            return "";
-        }
-        return "　".repeat(count);
     }
 }

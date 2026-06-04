@@ -220,7 +220,7 @@ public final class CliRunner {
         out.println("      --margin-right <cm> 右边距，默认 3.18");
         out.println("      --remove-spaces     删除每行中的空格和制表符");
         out.println("      --remove-empty-lines 删除空行");
-        out.println("      --indent <n>        每行前添加 n 个全角空格");
+        out.println("      --indent <n>        Word 段落首行缩进 n 个字符");
         out.println("      --blank-line-between-lines  行与行之间插入一空行");
         out.println("  -h, --help              显示帮助");
     }

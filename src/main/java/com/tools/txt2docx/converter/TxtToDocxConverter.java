@@ -22,6 +22,7 @@ public class TxtToDocxConverter {
 
     private static final double CM_PER_INCH = 2.54;
     private static final int TWIPS_PER_INCH = 1440;
+    private static final int TWIPS_PER_CHARACTER = 210;
 
     private final ConversionOptions options;
 
@@ -85,6 +86,7 @@ public class TxtToDocxConverter {
 
         for (String line : lines) {
             XWPFParagraph p = doc.createParagraph();
+            applyParagraphFormat(p, line);
             XWPFRun run = p.createRun();
             applyFont(run);
             if (!line.isEmpty()) {
@@ -97,6 +99,12 @@ public class TxtToDocxConverter {
         String font = options.getFontFamily();
         run.setFontFamily(font);
         run.setFontSize(options.getFontSize());
+    }
+
+    private void applyParagraphFormat(XWPFParagraph paragraph, String line) {
+        if (!line.isEmpty() && options.getIndentSize() > 0) {
+            paragraph.setIndentationFirstLine(options.getIndentSize() * TWIPS_PER_CHARACTER);
+        }
     }
 
     private static long cmToTwips(double cm) {
