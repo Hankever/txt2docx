@@ -38,14 +38,33 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.prefs.Preferences;
 
 public class MainFrame extends JFrame {
+
+    private static final String PREF_MODE = "mode";
+    private static final String PREF_OUTPUT_DIR = "outputDir";
+    private static final String PREF_FONT = "font";
+    private static final String PREF_FONT_SIZE = "fontSize";
+    private static final String PREF_MARGIN_TOP = "marginTop";
+    private static final String PREF_MARGIN_BOTTOM = "marginBottom";
+    private static final String PREF_MARGIN_LEFT = "marginLeft";
+    private static final String PREF_MARGIN_RIGHT = "marginRight";
+    private static final String PREF_INDENT = "indent";
+    private static final String PREF_ENCODING = "encoding";
+    private static final String PREF_RECURSIVE = "recursive";
+    private static final String PREF_PRESERVE_TREE = "preserveTree";
+    private static final String PREF_OVERWRITE = "overwrite";
+    private static final String PREF_REMOVE_SPACES = "removeSpaces";
+    private static final String PREF_REMOVE_EMPTY_LINES = "removeEmptyLines";
+    private static final String PREF_BLANK_LINE_BETWEEN_LINES = "blankLineBetweenLines";
 
     private final DefaultListModel<String> fileListModel = new DefaultListModel<>();
     private final JList<String> fileList = new JList<>(fileListModel);
     private final JTextField outputDirField = new JTextField();
     private final JTextArea logArea = new JTextArea();
     private final JProgressBar progressBar = new JProgressBar();
+    private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
 
     private final JComboBox<String> modeBox = new JComboBox<>(new String[]{"TXT -> DOCX", "DOCX -> TXT"});
     private final JComboBox<String> fontBox = new JComboBox<>(new String[]{"宋体", "微软雅黑", "黑体", "楷体", "仿宋", "Times New Roman", "Arial"});
@@ -85,6 +104,7 @@ public class MainFrame extends JFrame {
         applyOptionFieldSizes();
         setContentPane(buildContent());
         wireActions();
+        loadPreferences();
         cancelBtn.setEnabled(false);
     }
 
@@ -338,6 +358,7 @@ public class MainFrame extends JFrame {
         boolean preserveTree = preserveTreeBox.isSelected();
         boolean overwrite = overwriteBox.isSelected();
         ConversionMode mode = getSelectedMode();
+        savePreferences();
 
         currentProcessor = new BatchProcessor(options, mode);
         List<Path> snapshot = new ArrayList<>(inputPaths);
@@ -411,6 +432,54 @@ public class MainFrame extends JFrame {
         o.setIndentSize(((Number) indentSpinner.getValue()).intValue());
         o.setAddBlankLineBetweenLines(blankLineBetweenLinesBox.isSelected());
         return o;
+    }
+
+    private void loadPreferences() {
+        modeBox.setSelectedIndex(prefs.getInt(PREF_MODE, 0));
+        outputDirField.setText(prefs.get(PREF_OUTPUT_DIR, ""));
+        setComboValue(fontBox, prefs.get(PREF_FONT, "宋体"));
+        fontSizeSpinner.setValue(prefs.getInt(PREF_FONT_SIZE, 12));
+        marginTopSpinner.setValue(prefs.getDouble(PREF_MARGIN_TOP, 2.54));
+        marginBottomSpinner.setValue(prefs.getDouble(PREF_MARGIN_BOTTOM, 2.54));
+        marginLeftSpinner.setValue(prefs.getDouble(PREF_MARGIN_LEFT, 3.18));
+        marginRightSpinner.setValue(prefs.getDouble(PREF_MARGIN_RIGHT, 3.18));
+        indentSpinner.setValue(prefs.getInt(PREF_INDENT, 2));
+        setComboValue(encodingBox, prefs.get(PREF_ENCODING, "AUTO"));
+        recursiveBox.setSelected(prefs.getBoolean(PREF_RECURSIVE, true));
+        preserveTreeBox.setSelected(prefs.getBoolean(PREF_PRESERVE_TREE, true));
+        overwriteBox.setSelected(prefs.getBoolean(PREF_OVERWRITE, false));
+        removeSpacesBox.setSelected(prefs.getBoolean(PREF_REMOVE_SPACES, true));
+        removeEmptyLinesBox.setSelected(prefs.getBoolean(PREF_REMOVE_EMPTY_LINES, true));
+        blankLineBetweenLinesBox.setSelected(prefs.getBoolean(PREF_BLANK_LINE_BETWEEN_LINES, true));
+        refreshModeDependentUi();
+    }
+
+    private void savePreferences() {
+        prefs.putInt(PREF_MODE, modeBox.getSelectedIndex());
+        prefs.put(PREF_OUTPUT_DIR, outputDirField.getText().trim());
+        prefs.put(PREF_FONT, String.valueOf(fontBox.getSelectedItem()));
+        prefs.putInt(PREF_FONT_SIZE, ((Number) fontSizeSpinner.getValue()).intValue());
+        prefs.putDouble(PREF_MARGIN_TOP, ((Number) marginTopSpinner.getValue()).doubleValue());
+        prefs.putDouble(PREF_MARGIN_BOTTOM, ((Number) marginBottomSpinner.getValue()).doubleValue());
+        prefs.putDouble(PREF_MARGIN_LEFT, ((Number) marginLeftSpinner.getValue()).doubleValue());
+        prefs.putDouble(PREF_MARGIN_RIGHT, ((Number) marginRightSpinner.getValue()).doubleValue());
+        prefs.putInt(PREF_INDENT, ((Number) indentSpinner.getValue()).intValue());
+        prefs.put(PREF_ENCODING, String.valueOf(encodingBox.getSelectedItem()));
+        prefs.putBoolean(PREF_RECURSIVE, recursiveBox.isSelected());
+        prefs.putBoolean(PREF_PRESERVE_TREE, preserveTreeBox.isSelected());
+        prefs.putBoolean(PREF_OVERWRITE, overwriteBox.isSelected());
+        prefs.putBoolean(PREF_REMOVE_SPACES, removeSpacesBox.isSelected());
+        prefs.putBoolean(PREF_REMOVE_EMPTY_LINES, removeEmptyLinesBox.isSelected());
+        prefs.putBoolean(PREF_BLANK_LINE_BETWEEN_LINES, blankLineBetweenLinesBox.isSelected());
+    }
+
+    private void setComboValue(JComboBox<String> comboBox, String value) {
+        for (int i = 0; i < comboBox.getItemCount(); i++) {
+            if (comboBox.getItemAt(i).equals(value)) {
+                comboBox.setSelectedIndex(i);
+                return;
+            }
+        }
     }
 
     private ConversionMode getSelectedMode() {
