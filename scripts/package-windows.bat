@@ -21,7 +21,6 @@ jpackage ^
   --main-jar txt2docx.jar ^
   --main-class com.tools.txt2docx.Main ^
   --dest dist\windows ^
-  --icon windows.ico ^
   --win-dir-chooser ^
   --win-menu ^
   --win-shortcut ^
