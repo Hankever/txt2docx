@@ -490,6 +490,7 @@ public class MainFrame extends JFrame {
         boolean txtToDocx = getSelectedMode() == ConversionMode.TXT_TO_DOCX;
         fontBox.setEnabled(txtToDocx);
         fontSizeSpinner.setEnabled(txtToDocx);
+        indentSpinner.setEnabled(txtToDocx);
         marginTopSpinner.setEnabled(txtToDocx);
         marginBottomSpinner.setEnabled(txtToDocx);
         marginLeftSpinner.setEnabled(txtToDocx);
