@@ -14,7 +14,7 @@ mkdir dist\windows
 jpackage ^
   --type exe ^
   --name Txt2Docx ^
-  --app-version 1.0.0 ^
+  --app-version 2.0.0 ^
   --vendor com.tools ^
   --description "TXT 批量转 DOCX 工具" ^
   --input target ^
