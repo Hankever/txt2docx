@@ -2,6 +2,16 @@
 
 Java 实现的 TXT / DOCX 批量互转工具，支持桌面界面和命令行两种使用方式。
 
+## 下载
+
+- [Windows 安装包](https://github.com/Hankever/txt2docx/releases/latest)
+- [macOS 安装包](https://github.com/Hankever/txt2docx/releases/latest)
+
+说明：
+
+- 请在 GitHub Releases 页面下载对应平台的安装包。
+- 当前仓库地址：`https://github.com/Hankever/txt2docx`
+
 ## 功能
 
 - 批量选择多个 `txt` / `docx` 文件或整个目录进行转换
