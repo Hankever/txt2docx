@@ -24,7 +24,7 @@ jpackage ^
   --win-dir-chooser ^
   --win-menu ^
   --win-shortcut ^
-  --icon icon/windows2d.ico
+  --icon src/main/resources/icons/windows2d.ico
 
 if errorlevel 1 exit /b 1
 
