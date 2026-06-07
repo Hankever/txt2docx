@@ -108,6 +108,29 @@ JAVA_HOME=/Users/gqh/jdk/jdk17/Contents/Home mvn clean package
 
 ## 打包发布
 
+项目提供两类 GitHub Actions：
+
+- `.github/workflows/ci.yml`：每次 push / PR 运行 `mvn -B clean verify`，并上传可运行的 `txt2docx.jar`。
+- `.github/workflows/release.yml`：推送 `vX.Y.Z` 标签或手动触发时，自动构建 jar、macOS DMG、Windows EXE，并创建 GitHub Release。
+
+发版前先确认 `pom.xml` 中的 `<version>` 与要发布的版本一致。Release workflow 会校验标签版本和 Maven 版本，如果 `v2.1.0` 与 `pom.xml` 的 `2.1.0` 不一致会直接失败。
+
+```bash
+git tag v2.1.0
+git push origin v2.1.0
+```
+
+也可以在 GitHub Actions 页面手动运行 `release` workflow，并填写不带 `v` 前缀的版本号。
+
+正式 Release 产物：
+
+- `txt2docx-<version>.jar`
+- `Txt2Docx-<version>-macos-x64.dmg`
+- `Txt2Docx-<version>-macos-arm64.dmg`
+- `Txt2Docx-<version>-windows.exe`
+
+Release Notes 使用 GitHub 自动生成能力，分类配置在 `.github/release.yml`。给 PR 打上 `feature` / `enhancement` / `bug` / `fix` / `ci` / `release` / `build` 等标签后，发布说明会自动分组。
+
 ### macOS
 
 生成 `dmg` 安装包：
@@ -119,6 +142,16 @@ JAVA_HOME=/Users/gqh/jdk/jdk17/Contents/Home mvn clean package
 输出目录：
 
 - `dist/macos`
+
+macOS 签名和公证是可选的。未配置证书时仍会生成未签名 DMG；配置以下 GitHub Secrets 后，Release workflow 会导入 Developer ID 证书、执行 `jpackage --mac-sign`，并在 Apple 账号信息完整时提交 notarization 和 stapler：
+
+- `MAC_CERTIFICATE_P12_BASE64`：Developer ID Application `.p12` 证书的 base64 内容
+- `MAC_CERTIFICATE_PASSWORD`：`.p12` 证书密码
+- `MAC_SIGNING_KEY_USER_NAME`：证书名称，例如 `Developer ID Application: Example Inc (TEAMID)`
+- `MAC_KEYCHAIN_PASSWORD`：CI 临时 keychain 密码，可选
+- `APPLE_ID`：Apple ID 邮箱
+- `APPLE_TEAM_ID`：Apple Developer Team ID
+- `APPLE_APP_SPECIFIC_PASSWORD`：Apple app-specific password
 
 ### Windows
 
@@ -136,4 +169,26 @@ scripts\package-windows.bat
 
 - Windows 的 `jpackage --type exe` 需要在 Windows 环境运行。
 - 使用 `jpackage` 生成 Windows `exe` 时需要先安装 WiX Toolset。
-- 如果你在 Mac 上开发，仓库里已经提供了 GitHub Actions 工作流 `.github/workflows/build-windows-exe.yml`，可以在 Windows Runner 上自动生成 `exe` 并下载产物。
+- 如果你在 Mac 上开发，仓库里提供了 GitHub Actions 工作流 `.github/workflows/build-windows-exe.yml`，可以在 Windows Runner 上手动生成 `exe` 并下载产物。
+
+Windows 代码签名也是可选的。未配置证书时会生成未签名 EXE；配置以下 GitHub Secrets 后，Release workflow 和手动 Windows workflow 会用 `signtool` 签名：
+
+- `WINDOWS_CERTIFICATE_PFX_BASE64`：代码签名 PFX 证书的 base64 内容
+- `WINDOWS_CERTIFICATE_PASSWORD`：PFX 证书密码
+
+本地 Windows 打包也可以通过环境变量启用签名：
+
+```bat
+set WINDOWS_CERTIFICATE_PATH=C:\path\codesign.pfx
+set WINDOWS_CERTIFICATE_PASSWORD=your-password
+scripts\package-windows.bat
+```
+
+### 证书编码
+
+GitHub Secrets 中的证书内容建议使用单行 base64：
+
+```bash
+base64 -i DeveloperID.p12 | tr -d '\n'
+base64 -i codesign.pfx | tr -d '\n'
+```

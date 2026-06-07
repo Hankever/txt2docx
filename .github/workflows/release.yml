@@ -1,0 +1,242 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version without v prefix, for example 2.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  APP_NAME: Txt2Docx
+  APP_VENDOR: com.tools
+  APP_DESCRIPTION: TXT / EPUB / DOCX 批量转换工具
+  MAC_BUNDLE_ID: com.tools.txt2docx
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Read and validate version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          pom_version="$(python3 -c "import xml.etree.ElementTree as ET; ns={'m':'http://maven.apache.org/POM/4.0.0'}; root=ET.parse('pom.xml').getroot(); print(root.findtext('m:version', namespaces=ns))")"
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            requested="${{ inputs.version }}"
+            tag="v${requested}"
+          else
+            tag="${GITHUB_REF_NAME}"
+            requested="${tag#v}"
+          fi
+          if [[ "$requested" != "$pom_version" ]]; then
+            echo "Release version $requested does not match pom.xml version $pom_version" >&2
+            exit 1
+          fi
+          echo "version=$requested" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  jar:
+    needs: version
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Build fat jar
+        run: mvn -B clean package
+
+      - name: Stage jar
+        shell: bash
+        run: |
+          mkdir -p dist/release
+          cp target/txt2docx.jar "dist/release/txt2docx-${{ needs.version.outputs.version }}.jar"
+
+      - name: Upload jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: txt2docx-jar
+          path: dist/release/*.jar
+
+  macos:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15-intel
+            arch: x64
+          - runner: macos-15
+            arch: arm64
+    runs-on: ${{ matrix.runner }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Prepare Apple Developer ID certificate
+        env:
+          MAC_CERTIFICATE_P12_BASE64: ${{ secrets.MAC_CERTIFICATE_P12_BASE64 }}
+          MAC_CERTIFICATE_PASSWORD: ${{ secrets.MAC_CERTIFICATE_PASSWORD }}
+          MAC_SIGNING_KEY_USER_NAME: ${{ secrets.MAC_SIGNING_KEY_USER_NAME }}
+          MAC_KEYCHAIN_PASSWORD: ${{ secrets.MAC_KEYCHAIN_PASSWORD }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${MAC_CERTIFICATE_P12_BASE64:-}" || -z "${MAC_CERTIFICATE_PASSWORD:-}" || -z "${MAC_SIGNING_KEY_USER_NAME:-}" ]]; then
+            echo "macOS signing certificate import skipped: signing secrets not fully set"
+            exit 0
+          fi
+          keychain_password="${MAC_KEYCHAIN_PASSWORD:-release-keychain}"
+          certificate_path="$RUNNER_TEMP/developer-id.p12"
+          keychain_path="$RUNNER_TEMP/release-signing.keychain-db"
+          printf '%s' "$MAC_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$MAC_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path"
+          security list-keychains -d user -s "$keychain_path"
+          echo "MAC_SIGNING_KEYCHAIN=$keychain_path" >> "$GITHUB_ENV"
+          echo "MAC_SIGNING_KEY_USER_NAME=$MAC_SIGNING_KEY_USER_NAME" >> "$GITHUB_ENV"
+
+      - name: Build DMG
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+        run: ./scripts/package-mac.sh
+
+      - name: Rename DMG
+        shell: bash
+        run: |
+          set -euo pipefail
+          dmg="$(find dist/macos -maxdepth 1 -type f -name '*.dmg' | head -n 1)"
+          mv "$dmg" "dist/macos/Txt2Docx-${{ needs.version.outputs.version }}-macos-${{ matrix.arch }}.dmg"
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: txt2docx-macos-${{ matrix.arch }}-dmg
+          path: dist/macos/*.dmg
+
+  windows:
+    needs: version
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      - name: Install WiX
+        run: choco install wixtoolset --no-progress -y
+
+      - name: Build fat jar
+        run: mvn -B clean package
+
+      - name: Prepare Windows signing certificate
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE_PFX_BASE64: ${{ secrets.WINDOWS_CERTIFICATE_PFX_BASE64 }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:WINDOWS_CERTIFICATE_PFX_BASE64)) {
+            Write-Host "Windows signing certificate import skipped: WINDOWS_CERTIFICATE_PFX_BASE64 is not set"
+            exit 0
+          }
+          $certificatePath = Join-Path $env:RUNNER_TEMP "windows-signing.pfx"
+          [IO.File]::WriteAllBytes($certificatePath, [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE_PFX_BASE64))
+          "WINDOWS_CERTIFICATE_PATH=$certificatePath" >> $env:GITHUB_ENV
+
+      - name: Locate signtool
+        shell: pwsh
+        run: |
+          $signtool = Get-ChildItem "${env:ProgramFiles(x86)}\Windows Kits\10\bin\*\x64\signtool.exe" -ErrorAction SilentlyContinue |
+            Sort-Object FullName -Descending |
+            Select-Object -First 1
+          if ($signtool) {
+            "SIGNTOOL_PATH=$($signtool.FullName)" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "signtool.exe was not found; unsigned packaging still works."
+          }
+
+      - name: Create EXE installer
+        shell: cmd
+        env:
+          APP_VERSION: ${{ needs.version.outputs.version }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+        run: scripts\package-windows.bat
+
+      - name: Rename EXE
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist/windows/*.exe | Select-Object -First 1
+          Rename-Item $exe.FullName "Txt2Docx-${{ needs.version.outputs.version }}-windows.exe"
+
+      - name: Upload Windows artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: txt2docx-windows-exe
+          path: dist/windows/*.exe
+
+  github-release:
+    needs:
+      - version
+      - jar
+      - macos
+      - windows
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist/release
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "${{ needs.version.outputs.tag }}" >/dev/null 2>&1; then
+            gh release upload "${{ needs.version.outputs.tag }}" dist/release/* --clobber
+          else
+            gh release create "${{ needs.version.outputs.tag }}" dist/release/* \
+              --title "Txt2Docx ${{ needs.version.outputs.version }}" \
+              --target "$GITHUB_SHA" \
+              --generate-notes
+          fi
