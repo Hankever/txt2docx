@@ -9,6 +9,7 @@ import com.tools.txt2docx.converter.ConversionOptions;
 import javax.swing.BorderFactory;
 import javax.swing.Box;
 import javax.swing.BoxLayout;
+import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
 import javax.swing.JButton;
 import javax.swing.JCheckBox;
@@ -17,19 +18,25 @@ import javax.swing.JFileChooser;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
 import javax.swing.JList;
+import javax.swing.JMenu;
+import javax.swing.JMenuBar;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
+import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JScrollPane;
 import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
 import javax.swing.SpinnerNumberModel;
+import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import java.awt.BorderLayout;
+import java.awt.Color;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
+import java.awt.Font;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
@@ -102,15 +109,66 @@ public class MainFrame extends JFrame {
         setLocationRelativeTo(null);
 
         applyOptionFieldSizes();
+        setJMenuBar(buildMenuBar());
         setContentPane(buildContent());
+        applyComponentStyles();
         wireActions();
         loadPreferences();
         cancelBtn.setEnabled(false);
     }
 
+    private JMenuBar buildMenuBar() {
+        JMenuBar bar = new JMenuBar();
+        JMenu view = new JMenu("视图");
+        JMenu theme = new JMenu("主题");
+        ButtonGroup group = new ButtonGroup();
+        String current = ThemeManager.getSavedThemeId();
+        for (java.util.Map.Entry<String, String> e : ThemeManager.themes().entrySet()) {
+            String id = e.getKey();
+            JRadioButtonMenuItem item = new JRadioButtonMenuItem(e.getValue(), id.equals(current));
+            item.addActionListener(ev -> switchTheme(id));
+            group.add(item);
+            theme.add(item);
+        }
+        view.add(theme);
+        bar.add(view);
+        return bar;
+    }
+
+    private void switchTheme(String id) {
+        ThemeManager.saveTheme(id);
+        ThemeManager.apply(id);
+        for (java.awt.Window w : java.awt.Window.getWindows()) {
+            SwingUtilities.updateComponentTreeUI(w);
+        }
+    }
+
+    private void applyComponentStyles() {
+        convertBtn.putClientProperty("JButton.buttonType", "default");
+        convertBtn.setFont(convertBtn.getFont().deriveFont(Font.BOLD));
+
+        addFilesBtn.putClientProperty("JButton.buttonType", "roundRect");
+        addDirBtn.putClientProperty("JButton.buttonType", "roundRect");
+        removeBtn.putClientProperty("JButton.buttonType", "roundRect");
+        clearBtn.putClientProperty("JButton.buttonType", "roundRect");
+        chooseOutputBtn.putClientProperty("JButton.buttonType", "roundRect");
+        cancelBtn.putClientProperty("JButton.buttonType", "roundRect");
+
+        outputDirField.putClientProperty("JTextField.placeholderText", "选择转换结果保存的目录");
+
+        Font mono = new Font(Font.MONOSPACED, Font.PLAIN, 12);
+        logArea.setFont(mono);
+        logArea.setBackground(new Color(0xFAFBFC));
+        logArea.setMargin(new Insets(6, 8, 6, 8));
+
+        fileList.setFixedCellHeight(22);
+
+        progressBar.setPreferredSize(new Dimension(progressBar.getPreferredSize().width, 22));
+    }
+
     private JPanel buildContent() {
-        JPanel root = new JPanel(new BorderLayout(8, 8));
-        root.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        JPanel root = new JPanel(new BorderLayout(10, 10));
+        root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
         root.add(buildTopPanel(), BorderLayout.NORTH);
         root.add(buildCenterSplit(), BorderLayout.CENTER);
         root.add(buildBottomPanel(), BorderLayout.SOUTH);
@@ -121,14 +179,17 @@ public class MainFrame extends JFrame {
         JPanel top = new JPanel();
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
         top.add(buildOutputRow());
-        top.add(Box.createVerticalStrut(6));
+        top.add(Box.createVerticalStrut(10));
         top.add(buildOptionsPanel());
         return top;
     }
 
     private JPanel buildOutputRow() {
-        JPanel p = new JPanel(new BorderLayout(6, 0));
-        p.setBorder(BorderFactory.createTitledBorder("输出目录"));
+        JPanel p = new JPanel(new BorderLayout(8, 0));
+        p.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("输出目录"),
+                BorderFactory.createEmptyBorder(4, 6, 6, 6)
+        ));
         p.add(outputDirField, BorderLayout.CENTER);
         p.add(chooseOutputBtn, BorderLayout.EAST);
         return p;
@@ -253,11 +314,14 @@ public class MainFrame extends JFrame {
     }
 
     private JSplitPane buildCenterSplit() {
-        JPanel listPanel = new JPanel(new BorderLayout(4, 4));
-        listPanel.setBorder(BorderFactory.createTitledBorder("待转换文件"));
+        JPanel listPanel = new JPanel(new BorderLayout(4, 6));
+        listPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("待转换文件"),
+                BorderFactory.createEmptyBorder(4, 6, 6, 6)
+        ));
         listPanel.add(new JScrollPane(fileList), BorderLayout.CENTER);
 
-        JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 2));
+        JPanel listButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 4));
         listButtons.add(addFilesBtn);
         listButtons.add(addDirBtn);
         listButtons.add(removeBtn);
@@ -265,22 +329,28 @@ public class MainFrame extends JFrame {
         listPanel.add(listButtons, BorderLayout.SOUTH);
 
         JPanel logPanel = new JPanel(new BorderLayout());
-        logPanel.setBorder(BorderFactory.createTitledBorder("日志"));
+        logPanel.setBorder(BorderFactory.createCompoundBorder(
+                BorderFactory.createTitledBorder("日志"),
+                BorderFactory.createEmptyBorder(4, 6, 6, 6)
+        ));
         logArea.setEditable(false);
         logPanel.add(new JScrollPane(logArea), BorderLayout.CENTER);
 
         JSplitPane split = new JSplitPane(JSplitPane.VERTICAL_SPLIT, listPanel, logPanel);
         split.setResizeWeight(0.55);
+        split.setBorder(null);
+        split.setDividerSize(6);
         return split;
     }
 
     private JPanel buildBottomPanel() {
-        JPanel p = new JPanel(new BorderLayout(8, 0));
+        JPanel p = new JPanel(new BorderLayout(12, 0));
+        p.setBorder(BorderFactory.createEmptyBorder(4, 2, 0, 2));
         progressBar.setStringPainted(true);
         p.add(progressBar, BorderLayout.CENTER);
-        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
-        right.add(convertBtn);
+        JPanel right = new JPanel(new FlowLayout(FlowLayout.RIGHT, 8, 0));
         right.add(cancelBtn);
+        right.add(convertBtn);
         p.add(right, BorderLayout.EAST);
         return p;
     }
