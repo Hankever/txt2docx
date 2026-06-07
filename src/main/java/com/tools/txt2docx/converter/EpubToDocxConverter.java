@@ -84,28 +84,30 @@ public class EpubToDocxConverter {
     }
 
     public void convert(Path inputEpub, Path outputDocx) throws IOException {
-        List<DocxContentBlock> blocks = readEpubBlocks(inputEpub);
-        new DocxDocumentWriter(options).writeBlocks(blocks, outputDocx);
+        // Keep the ZipFile open across the write phase so the lazy ByteSource lambdas inside
+        // each DocxImageBlock can still pull bytes when DocxDocumentWriter asks for them.
+        try (ZipFile zip = new ZipFile(inputEpub.toFile())) {
+            List<DocxContentBlock> blocks = readEpubBlocks(zip);
+            new DocxDocumentWriter(options).writeBlocks(blocks, outputDocx);
+        }
     }
 
-    private List<DocxContentBlock> readEpubBlocks(Path inputEpub) throws IOException {
-        try (ZipFile zip = new ZipFile(inputEpub.toFile())) {
-            String opfPath = readPackagePath(zip);
-            List<ManifestItem> spine = readSpine(zip, opfPath);
-            List<DocxContentBlock> blocks = new ArrayList<>();
-            for (ManifestItem item : spine) {
-                if (!isReadableContent(item)) {
-                    continue;
-                }
-                byte[] content = readEntry(zip, item.path());
-                List<DocxContentBlock> contentBlocks = extractContentBlocks(content, item.path(), zip);
-                if (!blocks.isEmpty() && !contentBlocks.isEmpty()) {
-                    blocks.add(new DocxTextBlock(""));
-                }
-                blocks.addAll(contentBlocks);
+    private List<DocxContentBlock> readEpubBlocks(ZipFile zip) throws IOException {
+        String opfPath = readPackagePath(zip);
+        List<ManifestItem> spine = readSpine(zip, opfPath);
+        List<DocxContentBlock> blocks = new ArrayList<>();
+        for (ManifestItem item : spine) {
+            if (!isReadableContent(item)) {
+                continue;
             }
-            return blocks;
+            byte[] content = readEntry(zip, item.path());
+            List<DocxContentBlock> contentBlocks = extractContentBlocks(content, item.path(), zip);
+            if (!blocks.isEmpty() && !contentBlocks.isEmpty()) {
+                blocks.add(new DocxTextBlock(""));
+            }
+            blocks.addAll(contentBlocks);
         }
+        return blocks;
     }
 
     private String readPackagePath(ZipFile zip) throws IOException {
@@ -252,7 +254,7 @@ public class EpubToDocxConverter {
             }
             return;
         }
-        blocks.add(new DocxImageBlock(image.data(), image.fileName(), image.pictureType(), alt));
+        blocks.add(new DocxImageBlock(image.source(), image.fileName(), image.pictureType(), alt));
     }
 
     private static boolean isIgnoredElement(String name) {
@@ -353,16 +355,27 @@ public class EpubToDocxConverter {
         }
 
         String path = resolveZipPath(basePath, cleaned);
-        try {
-            byte[] data = readEntry(zip, path);
-            int pictureType = pictureTypeFor(path, "", data);
+        ZipEntry entry = zip.getEntry(path);
+        if (entry == null) {
+            return null;
+        }
+        // Resolve type up front so we can skip unknown formats before committing to a block.
+        // Extension is usually enough; only sniff the first bytes when the suffix is missing.
+        int pictureType = pictureTypeForExtension(path);
+        if (pictureType < 0) {
+            try (var in = zip.getInputStream(entry)) {
+                pictureType = pictureTypeForHeader(in.readNBytes(16));
+            } catch (IOException ex) {
+                return null;
+            }
             if (pictureType < 0) {
                 return null;
             }
-            return new ImageResource(data, fileNameFor(path), pictureType);
-        } catch (IOException ex) {
-            return null;
         }
+        // Capture path by value; the lambda is invoked later when DocxDocumentWriter writes
+        // the image. The enclosing ZipFile must stay open until then — convert() guarantees
+        // this via its try-with-resources scope.
+        return new ImageResource(() -> readEntry(zip, path), fileNameFor(path), pictureType);
     }
 
     private static ImageResource readDataUriImage(String dataUri) {
@@ -383,7 +396,7 @@ public class EpubToDocxConverter {
                 return null;
             }
             String ext = extensionForPictureType(pictureType);
-            return new ImageResource(data, "embedded-image." + ext, pictureType);
+            return new ImageResource(ByteSource.of(data), "embedded-image." + ext, pictureType);
         } catch (IllegalArgumentException ex) {
             return null;
         }
@@ -397,11 +410,14 @@ public class EpubToDocxConverter {
             case "image/gif" -> org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_GIF;
             case "image/bmp", "image/x-ms-bmp" -> org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_BMP;
             case "image/tiff" -> org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_TIFF;
-            default -> pictureTypeForExtensionOrHeader(path, data);
+            default -> {
+                int byExt = pictureTypeForExtension(path);
+                yield byExt >= 0 ? byExt : pictureTypeForHeader(data);
+            }
         };
     }
 
-    private static int pictureTypeForExtensionOrHeader(String path, byte[] data) {
+    private static int pictureTypeForExtension(String path) {
         String lower = path == null ? "" : path.toLowerCase(Locale.ROOT);
         if (lower.endsWith(".jpg") || lower.endsWith(".jpeg")) {
             return org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_JPEG;
@@ -418,7 +434,7 @@ public class EpubToDocxConverter {
         if (lower.endsWith(".tif") || lower.endsWith(".tiff")) {
             return org.apache.poi.xwpf.usermodel.Document.PICTURE_TYPE_TIFF;
         }
-        return pictureTypeForHeader(data);
+        return -1;
     }
 
     private static int pictureTypeForHeader(byte[] data) {
@@ -691,6 +707,6 @@ public class EpubToDocxConverter {
     private record ManifestItem(String path, String mediaType) {
     }
 
-    private record ImageResource(byte[] data, String fileName, int pictureType) {
+    private record ImageResource(ByteSource source, String fileName, int pictureType) {
     }
 }

@@ -21,6 +21,7 @@ public final class PreferencesStore {
     private static final String PREF_REMOVE_SPACES = "removeSpaces";
     private static final String PREF_REMOVE_EMPTY_LINES = "removeEmptyLines";
     private static final String PREF_BLANK_LINE_BETWEEN_LINES = "blankLineBetweenLines";
+    private static final String PREF_BACKGROUND_IMAGE = "backgroundImage";
 
     private final Preferences prefs;
 
@@ -78,4 +79,13 @@ public final class PreferencesStore {
 
     public boolean isBlankLineBetweenLines()        { return prefs.getBoolean(PREF_BLANK_LINE_BETWEEN_LINES, true); }
     public void setBlankLineBetweenLines(boolean v) { prefs.putBoolean(PREF_BLANK_LINE_BETWEEN_LINES, v); }
+
+    public String getBackgroundImage()              { return prefs.get(PREF_BACKGROUND_IMAGE, ""); }
+    public void setBackgroundImage(String v) {
+        if (v == null || v.isBlank()) {
+            prefs.remove(PREF_BACKGROUND_IMAGE);
+        } else {
+            prefs.put(PREF_BACKGROUND_IMAGE, v);
+        }
+    }
 }

@@ -155,13 +155,22 @@ final class DocxDocumentWriter {
     }
 
     private int writeImage(XWPFDocument doc, DocxImageBlock image) {
-        if (image.data().length == 0 || image.pictureType() < 0) {
+        if (image.pictureType() < 0) {
+            return writeFallbackAltText(doc, image.altText());
+        }
+        byte[] data;
+        try {
+            data = image.source().read();
+        } catch (IOException ex) {
+            return writeFallbackAltText(doc, image.altText());
+        }
+        if (data.length == 0) {
             return writeFallbackAltText(doc, image.altText());
         }
 
-        ImageSize size = readImageSize(image.data());
+        ImageSize size = readImageSize(data);
         ImageSize scaled = scaleToPageWidth(size);
-        try (ByteArrayInputStream in = new ByteArrayInputStream(image.data())) {
+        try (ByteArrayInputStream in = new ByteArrayInputStream(data)) {
             XWPFParagraph p = doc.createParagraph();
             p.setAlignment(ParagraphAlignment.CENTER);
             XWPFRun run = p.createRun();

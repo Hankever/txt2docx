@@ -20,6 +20,7 @@ import javax.swing.JFrame;
 import javax.swing.JList;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
+import javax.swing.JMenuItem;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
 import javax.swing.JProgressBar;
@@ -31,15 +32,25 @@ import javax.swing.JTextField;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
 import javax.swing.TransferHandler;
+import javax.swing.filechooser.FileNameExtensionFilter;
+import javax.imageio.ImageIO;
+import java.awt.AlphaComposite;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Component;
+import java.awt.Container;
 import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.Graphics;
+import java.awt.Graphics2D;
 import java.awt.Insets;
+import java.awt.RenderingHints;
 import java.awt.datatransfer.DataFlavor;
+import java.awt.image.BufferedImage;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
@@ -51,6 +62,7 @@ import java.util.Set;
 public class MainFrame extends JFrame {
 
     private final PreferencesStore prefs = new PreferencesStore();
+    private final BackgroundPanel backgroundPanel = new BackgroundPanel();
     private final OptionsPanel optionsPanel = new OptionsPanel();
 
     private final DefaultListModel<String> fileListModel = new DefaultListModel<>();
@@ -66,6 +78,8 @@ public class MainFrame extends JFrame {
     private final JButton chooseOutputBtn = new JButton("选择输出目录...");
     private final JButton convertBtn = new JButton("开始转换");
     private final JButton cancelBtn = new JButton("取消");
+    private final JMenuItem chooseBackgroundItem = new JMenuItem("选择背景图...");
+    private final JMenuItem clearBackgroundItem = new JMenuItem("清除背景图");
 
     private final List<Path> inputPaths = new ArrayList<>();
     private final Set<String> inputPathKeys = new HashSet<>();
@@ -100,7 +114,14 @@ public class MainFrame extends JFrame {
             group.add(item);
             theme.add(item);
         }
+        JMenu background = new JMenu("背景图");
+        chooseBackgroundItem.addActionListener(e -> onChooseBackgroundImage());
+        clearBackgroundItem.addActionListener(e -> clearBackgroundImage());
+        clearBackgroundItem.setEnabled(false);
+        background.add(chooseBackgroundItem);
+        background.add(clearBackgroundItem);
         view.add(theme);
+        view.add(background);
         bar.add(view);
         return bar;
     }
@@ -111,6 +132,8 @@ public class MainFrame extends JFrame {
         for (java.awt.Window w : java.awt.Window.getWindows()) {
             SwingUtilities.updateComponentTreeUI(w);
         }
+        makeTransparentContainers(getContentPane());
+        repaint();
     }
 
     private void applyComponentStyles() {
@@ -137,11 +160,13 @@ public class MainFrame extends JFrame {
     }
 
     private JPanel buildContent() {
-        JPanel root = new JPanel(new BorderLayout(10, 10));
+        BackgroundPanel root = backgroundPanel;
+        root.setLayout(new BorderLayout(10, 10));
         root.setBorder(BorderFactory.createEmptyBorder(14, 14, 14, 14));
         root.add(buildTopPanel(), BorderLayout.NORTH);
         root.add(buildCenterSplit(), BorderLayout.CENTER);
         root.add(buildBottomPanel(), BorderLayout.SOUTH);
+        makeTransparentContainers(root);
         return root;
     }
 
@@ -314,6 +339,54 @@ public class MainFrame extends JFrame {
         }
     }
 
+    private void onChooseBackgroundImage() {
+        JFileChooser fc = new JFileChooser();
+        fc.setFileFilter(new FileNameExtensionFilter(
+                "图片文件 (*.png, *.jpg, *.jpeg, *.gif, *.bmp)",
+                "png", "jpg", "jpeg", "gif", "bmp"
+        ));
+        String saved = prefs.getBackgroundImage();
+        if (!saved.isBlank()) {
+            File current = new File(saved);
+            fc.setCurrentDirectory(current.getParentFile());
+            fc.setSelectedFile(current);
+        }
+        if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
+            applyBackgroundImage(fc.getSelectedFile().toPath(), true);
+        }
+    }
+
+    private boolean applyBackgroundImage(Path imagePath, boolean showError) {
+        try {
+            BufferedImage image = ImageIO.read(imagePath.toFile());
+            if (image == null) {
+                throw new IOException("不支持的图片格式");
+            }
+            backgroundPanel.setBackgroundImage(image);
+            prefs.setBackgroundImage(imagePath.toAbsolutePath().normalize().toString());
+            clearBackgroundItem.setEnabled(true);
+            repaint();
+            return true;
+        } catch (Exception ex) {
+            if (showError) {
+                JOptionPane.showMessageDialog(
+                        this,
+                        "背景图加载失败: " + ex.getMessage(),
+                        "背景图",
+                        JOptionPane.WARNING_MESSAGE
+                );
+            }
+            return false;
+        }
+    }
+
+    private void clearBackgroundImage() {
+        backgroundPanel.setBackgroundImage(null);
+        prefs.setBackgroundImage("");
+        clearBackgroundItem.setEnabled(false);
+        repaint();
+    }
+
     private void addInputPath(Path p) {
         String key = pathKey(p);
         if (!inputPathKeys.add(key)) {
@@ -462,6 +535,13 @@ public class MainFrame extends JFrame {
     private void loadPreferences() {
         outputDirField.setText(prefs.getOutputDir());
         optionsPanel.loadFrom(prefs);
+        String backgroundImage = prefs.getBackgroundImage();
+        if (backgroundImage.isBlank()) {
+            clearBackgroundItem.setEnabled(false);
+        } else if (!applyBackgroundImage(Paths.get(backgroundImage), false)) {
+            prefs.setBackgroundImage("");
+            clearBackgroundItem.setEnabled(false);
+        }
         refreshModeDependentUi();
     }
 
@@ -495,5 +575,62 @@ public class MainFrame extends JFrame {
         String out = r.getOutput() == null ? "" : " -> " + r.getOutput();
         String msg = (r.getMessage() == null || r.getMessage().isEmpty()) ? "" : " (" + r.getMessage() + ")";
         return tag + " " + r.getSource() + out + msg;
+    }
+
+    private static void makeTransparentContainers(Component component) {
+        if (component instanceof BackgroundPanel panel) {
+            panel.setOpaque(true);
+        } else if (component instanceof JPanel panel) {
+            panel.setOpaque(false);
+        } else if (component instanceof JSplitPane splitPane) {
+            splitPane.setOpaque(false);
+        }
+
+        if (component instanceof Container container) {
+            for (Component child : container.getComponents()) {
+                makeTransparentContainers(child);
+            }
+        }
+    }
+
+    private static final class BackgroundPanel extends JPanel {
+        private static final float IMAGE_OPACITY = 0.22f;
+
+        private BufferedImage backgroundImage;
+
+        void setBackgroundImage(BufferedImage backgroundImage) {
+            this.backgroundImage = backgroundImage;
+            repaint();
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            super.paintComponent(g);
+            if (backgroundImage == null || getWidth() <= 0 || getHeight() <= 0) {
+                return;
+            }
+
+            int imageWidth = backgroundImage.getWidth();
+            int imageHeight = backgroundImage.getHeight();
+            if (imageWidth <= 0 || imageHeight <= 0) {
+                return;
+            }
+
+            double scale = Math.max(getWidth() / (double) imageWidth, getHeight() / (double) imageHeight);
+            int drawWidth = (int) Math.round(imageWidth * scale);
+            int drawHeight = (int) Math.round(imageHeight * scale);
+            int x = (getWidth() - drawWidth) / 2;
+            int y = (getHeight() - drawHeight) / 2;
+
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setComposite(AlphaComposite.SrcOver.derive(IMAGE_OPACITY));
+                g2.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);
+                g2.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                g2.drawImage(backgroundImage, x, y, drawWidth, drawHeight, null);
+            } finally {
+                g2.dispose();
+            }
+        }
     }
 }
