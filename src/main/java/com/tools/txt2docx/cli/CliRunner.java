@@ -136,11 +136,11 @@ public final class CliRunner {
                 case "--preserve-tree" -> preserveDirectoryStructure = true;
                 case "--encoding" -> options.setEncoding(requireValue(args, ++i, arg));
                 case "--font" -> options.setFontFamily(requireValue(args, ++i, arg));
-                case "--font-size" -> options.setFontSize(parseInt(args, ++i, arg));
-                case "--margin-top" -> options.setMarginTopCm(parseDouble(args, ++i, arg));
-                case "--margin-bottom" -> options.setMarginBottomCm(parseDouble(args, ++i, arg));
-                case "--margin-left" -> options.setMarginLeftCm(parseDouble(args, ++i, arg));
-                case "--margin-right" -> options.setMarginRightCm(parseDouble(args, ++i, arg));
+                case "--font-size" -> options.setFontSize(parsePositiveInt(args, ++i, arg));
+                case "--margin-top" -> options.setMarginTopCm(parseNonNegativeDouble(args, ++i, arg));
+                case "--margin-bottom" -> options.setMarginBottomCm(parseNonNegativeDouble(args, ++i, arg));
+                case "--margin-left" -> options.setMarginLeftCm(parseNonNegativeDouble(args, ++i, arg));
+                case "--margin-right" -> options.setMarginRightCm(parseNonNegativeDouble(args, ++i, arg));
                 case "--remove-spaces" -> options.setRemoveSpaces(true);
                 case "--remove-empty-lines" -> options.setRemoveEmptyLines(true);
                 case "--indent" -> options.setIndentSize(parseNonNegativeInt(args, ++i, arg));
@@ -195,6 +195,14 @@ public final class CliRunner {
         return value;
     }
 
+    private static int parsePositiveInt(String[] args, int index, String option) {
+        int value = parseInt(args, index, option);
+        if (value < 1) {
+            throw new IllegalArgumentException(option + " 必须大于 0");
+        }
+        return value;
+    }
+
     private static double parseDouble(String[] args, int index, String option) {
         String value = requireValue(args, index, option);
         try {
@@ -202,6 +210,14 @@ public final class CliRunner {
         } catch (NumberFormatException ex) {
             throw new IllegalArgumentException(option + " 需要数字: " + value);
         }
+    }
+
+    private static double parseNonNegativeDouble(String[] args, int index, String option) {
+        double value = parseDouble(args, index, option);
+        if (Double.isNaN(value) || Double.isInfinite(value) || value < 0) {
+            throw new IllegalArgumentException(option + " 不能小于 0");
+        }
+        return value;
     }
 
     private static ConversionMode parseMode(String[] args, int index, String option) {

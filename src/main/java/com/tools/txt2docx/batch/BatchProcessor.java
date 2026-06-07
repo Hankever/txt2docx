@@ -94,13 +94,18 @@ public class BatchProcessor {
         int total = files.size();
         if (total == 0) return new ArrayList<>();
 
+        // Resolve outputDir to an absolute, normalized path before anything else. A relative
+        // outputDir like "." would normalize away to "name.docx" with no parent component,
+        // and then both Files.createDirectories(...getParent()) and uniquify(...) NPE.
+        Path normalizedOutput = outputDir.toAbsolutePath().normalize();
+
         // Phase 1: resolve all targets sequentially. uniquify must see a deterministic
         // reservation order — otherwise parallel runs would race on the same target name.
         List<PlannedItem> plan = new ArrayList<>(total);
         Set<Path> reservedTargets = new HashSet<>();
         for (BatchItem item : files) {
             try {
-                ResolvedTarget t = resolveOutput(item, outputDir, policy, reservedTargets);
+                ResolvedTarget t = resolveOutput(item, normalizedOutput, policy, reservedTargets);
                 plan.add(new PlannedItem(item, t, null));
             } catch (Exception e) {
                 plan.add(new PlannedItem(item, null, e));

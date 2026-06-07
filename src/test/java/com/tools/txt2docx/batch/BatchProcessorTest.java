@@ -213,6 +213,27 @@ class BatchProcessorTest {
     }
 
     @Test
+    void relativeOutputDirWithoutParentIsTolerated(@TempDir Path root) throws IOException {
+        // Regression: outputDir = Path.of(".") would normalize away to a parent-less target
+        // ("a.docx" with no parent), then Files.createDirectories(target.getParent()) NPE'd.
+        Path inputs = root.resolve("in");
+        writeTxt(inputs, "regression-cwd-output.txt");
+
+        BatchProcessor p = new BatchProcessor(defaultOptions(), ConversionMode.TXT_TO_DOCX);
+        List<BatchItem> items = p.collectFiles(List.of(inputs), false, false);
+        List<ConversionResult> results = p.process(items, Path.of("."), ConflictPolicy.AUTO_RENAME, null);
+
+        Path stray = Path.of("regression-cwd-output.docx").toAbsolutePath().normalize();
+        try {
+            assertEquals(1, results.size());
+            assertEquals(ConversionResult.Status.SUCCESS, results.get(0).getStatus(),
+                    "expected success, got message: " + results.get(0).getMessage());
+        } finally {
+            try { Files.deleteIfExists(stray); } catch (IOException ignored) {}
+        }
+    }
+
+    @Test
     void heavyModesCapParallelismLowerThanCpuCount() {
         int cpus = Runtime.getRuntime().availableProcessors();
         int txt = new BatchProcessor(defaultOptions(), ConversionMode.TXT_TO_DOCX).parallelism();

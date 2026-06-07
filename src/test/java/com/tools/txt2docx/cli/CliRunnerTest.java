@@ -85,6 +85,29 @@ class CliRunnerTest {
     }
 
     @Test
+    void nonPositiveFontSizeRejected() {
+        Captured c = run("--input", "/tmp", "--output", "/tmp", "--font-size", "0");
+        assertEquals(2, c.exit);
+        assertTrue(c.err.contains("--font-size") && c.err.contains("大于 0"),
+                "expected font-size error, got: " + c.err);
+    }
+
+    @Test
+    void negativeMarginRejected() {
+        Captured c = run("--input", "/tmp", "--output", "/tmp", "--margin-left", "-1.5");
+        assertEquals(2, c.exit);
+        assertTrue(c.err.contains("--margin-left") && c.err.contains("不能小于 0"),
+                "expected margin error, got: " + c.err);
+    }
+
+    @Test
+    void nonFiniteMarginRejected() {
+        Captured c = run("--input", "/tmp", "--output", "/tmp", "--margin-top", "NaN");
+        assertEquals(2, c.exit);
+        assertTrue(c.err.contains("--margin-top"), "expected margin error, got: " + c.err);
+    }
+
+    @Test
     void endToEndConvertsTxtToDocx(@TempDir Path root) throws IOException {
         Path inputs = root.resolve("in");
         Path outputs = root.resolve("out");
