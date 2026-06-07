@@ -10,6 +10,8 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.stream.Stream;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipOutputStream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
@@ -105,6 +107,26 @@ class CliRunnerTest {
     }
 
     @Test
+    void endToEndConvertsEpubToDocx(@TempDir Path root) throws IOException {
+        Path inputs = root.resolve("in");
+        Path outputs = root.resolve("out");
+        Files.createDirectories(inputs);
+        writeMinimalEpub(inputs.resolve("book.epub"));
+
+        Captured c = run(
+                "--mode", "epub2docx",
+                "--input", inputs.toString(),
+                "--output", outputs.toString(),
+                "--flatten"
+        );
+
+        assertEquals(0, c.exit, "expected success exit, got " + c.exit + " | err: " + c.err);
+        assertTrue(Files.exists(outputs.resolve("book.docx")), "expected EPUB output docx");
+        assertTrue(c.out.contains("共找到 1 个 .epub 文件"), "expected epub progress text, got: " + c.out);
+        assertTrue(c.out.contains("成功: 1"), "expected summary success count, got: " + c.out);
+    }
+
+    @Test
     void overwriteFlagIsAliasForOnConflictOverwrite(@TempDir Path root) throws IOException {
         Path inputs = root.resolve("in");
         Path outputs = root.resolve("out");
@@ -148,5 +170,42 @@ class CliRunnerTest {
         assertEquals(0, c.exit);
         assertTrue(c.out.contains("跳过: 1"), "expected skipped summary, got: " + c.out);
         assertEquals("stale", Files.readString(outputs.resolve("a.docx")), "stale file should remain untouched");
+    }
+
+    private static void writeMinimalEpub(Path target) throws IOException {
+        try (ZipOutputStream zip = new ZipOutputStream(Files.newOutputStream(target), StandardCharsets.UTF_8)) {
+            put(zip, "mimetype", "application/epub+zip");
+            put(zip, "META-INF/container.xml", """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+                      <rootfiles>
+                        <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+                      </rootfiles>
+                    </container>
+                    """);
+            put(zip, "OEBPS/content.opf", """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <package xmlns="http://www.idpf.org/2007/opf" version="3.0">
+                      <manifest>
+                        <item id="chapter" href="chapter.xhtml" media-type="application/xhtml+xml"/>
+                      </manifest>
+                      <spine>
+                        <itemref idref="chapter"/>
+                      </spine>
+                    </package>
+                    """);
+            put(zip, "OEBPS/chapter.xhtml", """
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <html xmlns="http://www.w3.org/1999/xhtml">
+                      <body><h1>标题</h1><p>正文</p></body>
+                    </html>
+                    """);
+        }
+    }
+
+    private static void put(ZipOutputStream zip, String name, String content) throws IOException {
+        zip.putNextEntry(new ZipEntry(name));
+        zip.write(content.getBytes(StandardCharsets.UTF_8));
+        zip.closeEntry();
     }
 }

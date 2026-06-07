@@ -35,6 +35,7 @@ class BatchProcessorTest {
         writeTxt(root, "keep.txt");
         Files.writeString(root.resolve("skip.md"), "x");
         Files.writeString(root.resolve("skip.docx"), "x");
+        Files.writeString(root.resolve("skip.epub"), "x");
 
         BatchProcessor p = new BatchProcessor(defaultOptions(), ConversionMode.TXT_TO_DOCX);
         List<BatchItem> items = p.collectFiles(List.of(root), false, false);
@@ -43,6 +44,20 @@ class BatchProcessorTest {
                 .map(i -> i.source().getFileName().toString())
                 .collect(Collectors.toSet());
         assertEquals(Set.of("keep.txt"), names);
+    }
+
+    @Test
+    void collectFilesFiltersEpubModeExtension(@TempDir Path root) throws IOException {
+        Files.writeString(root.resolve("keep.epub"), "x");
+        Files.writeString(root.resolve("skip.txt"), "x");
+        Files.writeString(root.resolve("skip.docx"), "x");
+
+        BatchProcessor p = new BatchProcessor(defaultOptions(), ConversionMode.EPUB_TO_DOCX);
+        List<BatchItem> items = p.collectFiles(List.of(root), false, false);
+
+        assertEquals(1, items.size());
+        assertEquals("keep.epub", items.get(0).source().getFileName().toString());
+        assertEquals("keep.docx", items.get(0).relativeOutput().getFileName().toString());
     }
 
     @Test
@@ -195,5 +210,20 @@ class BatchProcessorTest {
         assertEquals(2, results.size());
         assertEquals("name.docx", results.get(0).getOutput().getFileName().toString());
         assertEquals("name (2).docx", results.get(1).getOutput().getFileName().toString());
+    }
+
+    @Test
+    void heavyModesCapParallelismLowerThanCpuCount() {
+        int cpus = Runtime.getRuntime().availableProcessors();
+        int txt = new BatchProcessor(defaultOptions(), ConversionMode.TXT_TO_DOCX).parallelism();
+        int epub = new BatchProcessor(defaultOptions(), ConversionMode.EPUB_TO_DOCX).parallelism();
+        int docx = new BatchProcessor(defaultOptions(), ConversionMode.DOCX_TO_TXT).parallelism();
+
+        assertTrue(epub <= 4, "EPUB parallelism should cap at 4, got " + epub);
+        assertTrue(docx <= 4, "DOCX_TO_TXT parallelism should cap at 4, got " + docx);
+        assertTrue(txt <= 8, "TXT parallelism should cap at 8, got " + txt);
+        if (cpus >= 8) {
+            assertTrue(txt > epub, "TXT mode should keep a higher ceiling than heavy modes on multi-core machines");
+        }
     }
 }

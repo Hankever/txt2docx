@@ -27,7 +27,7 @@ public final class OptionsPanel extends JPanel {
     static final String CONFLICT_OVERWRITE = "已存在则覆盖";
     static final String CONFLICT_SKIP = "已存在则跳过";
 
-    private final JComboBox<String> modeBox = new JComboBox<>(new String[]{"TXT -> DOCX", "DOCX -> TXT"});
+    private final JComboBox<String> modeBox = new JComboBox<>(new String[]{"TXT -> DOCX", "DOCX -> TXT", "EPUB -> DOCX"});
     private final JComboBox<String> fontBox = new JComboBox<>(new String[]{"宋体", "微软雅黑", "黑体", "楷体", "仿宋", "Times New Roman", "Arial"});
     private final JSpinner fontSizeSpinner = new JSpinner(new SpinnerNumberModel(12, 6, 72, 1));
     private final JSpinner marginTopSpinner = new JSpinner(new SpinnerNumberModel(2.54, 0.0, 10.0, 0.1));
@@ -154,18 +154,22 @@ public final class OptionsPanel extends JPanel {
     }
 
     public ConversionMode getMode() {
-        return modeBox.getSelectedIndex() == 1 ? ConversionMode.DOCX_TO_TXT : ConversionMode.TXT_TO_DOCX;
+        return switch (modeBox.getSelectedIndex()) {
+            case 1 -> ConversionMode.DOCX_TO_TXT;
+            case 2 -> ConversionMode.EPUB_TO_DOCX;
+            default -> ConversionMode.TXT_TO_DOCX;
+        };
     }
 
     public void refreshModeDependentUi() {
-        boolean txtToDocx = getMode() == ConversionMode.TXT_TO_DOCX;
-        fontBox.setEnabled(txtToDocx);
-        fontSizeSpinner.setEnabled(txtToDocx);
-        indentSpinner.setEnabled(txtToDocx);
-        marginTopSpinner.setEnabled(txtToDocx);
-        marginBottomSpinner.setEnabled(txtToDocx);
-        marginLeftSpinner.setEnabled(txtToDocx);
-        marginRightSpinner.setEnabled(txtToDocx);
+        boolean outputsDocx = getMode().outputsDocx();
+        fontBox.setEnabled(outputsDocx);
+        fontSizeSpinner.setEnabled(outputsDocx);
+        indentSpinner.setEnabled(outputsDocx);
+        marginTopSpinner.setEnabled(outputsDocx);
+        marginBottomSpinner.setEnabled(outputsDocx);
+        marginLeftSpinner.setEnabled(outputsDocx);
+        marginRightSpinner.setEnabled(outputsDocx);
     }
 
     public boolean isRecursive()         { return recursiveBox.isSelected(); }
@@ -198,7 +202,8 @@ public final class OptionsPanel extends JPanel {
     }
 
     public void loadFrom(PreferencesStore prefs) {
-        modeBox.setSelectedIndex(prefs.getModeIndex());
+        int modeIndex = prefs.getModeIndex();
+        modeBox.setSelectedIndex(modeIndex >= 0 && modeIndex < modeBox.getItemCount() ? modeIndex : 0);
         setComboValue(fontBox, prefs.getFont());
         fontSizeSpinner.setValue(prefs.getFontSize());
         marginTopSpinner.setValue(prefs.getMarginTop());

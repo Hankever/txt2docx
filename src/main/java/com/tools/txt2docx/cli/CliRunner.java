@@ -5,6 +5,7 @@ import com.tools.txt2docx.batch.BatchProcessor;
 import com.tools.txt2docx.batch.ConflictPolicy;
 import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
+import com.tools.txt2docx.batch.PathOverlap;
 import com.tools.txt2docx.converter.ConversionOptions;
 
 import java.io.PrintStream;
@@ -36,6 +37,11 @@ public final class CliRunner {
 
         BatchProcessor processor = new BatchProcessor(cliArgs.options(), cliArgs.mode());
         try {
+            String overlap = PathOverlap.check(cliArgs.inputs(), cliArgs.outputDir());
+            if (overlap != null) {
+                err.println("目录冲突: " + overlap);
+                return 2;
+            }
             Files.createDirectories(cliArgs.outputDir());
             List<BatchItem> items = processor.collectFiles(
                     cliArgs.inputs(),
@@ -43,16 +49,23 @@ public final class CliRunner {
                     cliArgs.preserveDirectoryStructure()
             );
             if (items.isEmpty()) {
-                out.println("未找到任何 " + sourceExtension(cliArgs.mode()) + " 文件");
+                out.println("未找到任何 " + cliArgs.mode().sourceExtension() + " 文件");
                 return 0;
             }
 
-            out.println("共找到 " + items.size() + " 个 " + sourceExtension(cliArgs.mode()) + " 文件，开始转换...");
+            out.println("共找到 " + items.size() + " 个 " + cliArgs.mode().sourceExtension() + " 文件，开始转换...");
+            // Parallel workers can finish out of order; serialize the listener so each progress
+            // line is atomic and the on-screen done counter monotonically increases.
+            Object printLock = new Object();
             List<ConversionResult> results = processor.process(
                     items,
                     cliArgs.outputDir(),
                     cliArgs.onConflict(),
-                    (done, total, last) -> out.println(formatProgress(done, total, last))
+                    (done, total, last) -> {
+                        synchronized (printLock) {
+                            out.println(formatProgress(done, total, last));
+                        }
+                    }
             );
             return printSummary(results, cliArgs.outputDir(), out);
         } catch (Exception ex) {
@@ -196,16 +209,13 @@ public final class CliRunner {
         return switch (value.toLowerCase()) {
             case "txt2docx", "txt-to-docx" -> ConversionMode.TXT_TO_DOCX;
             case "docx2txt", "docx-to-txt" -> ConversionMode.DOCX_TO_TXT;
-            default -> throw new IllegalArgumentException(option + " 仅支持 txt2docx 或 docx2txt: " + value);
+            case "epub2docx", "epub-to-docx" -> ConversionMode.EPUB_TO_DOCX;
+            default -> throw new IllegalArgumentException(option + " 仅支持 txt2docx / docx2txt / epub2docx: " + value);
         };
     }
 
-    private static String sourceExtension(ConversionMode mode) {
-        return mode == ConversionMode.DOCX_TO_TXT ? ".docx" : ".txt";
-    }
-
     private static void printUsage(PrintStream out) {
-        out.println("TXT / DOCX 批量互转");
+        out.println("TXT / EPUB / DOCX 批量转换");
         out.println();
         out.println("GUI 模式:");
         out.println("  java -jar target/txt2docx.jar");
@@ -214,11 +224,12 @@ public final class CliRunner {
         out.println("CLI 模式:");
         out.println("  java -jar target/txt2docx.jar --input ./txt --output ./docx --recursive");
         out.println("  java -jar target/txt2docx.jar --mode docx2txt -i a.docx -o ./out --encoding UTF-8");
+        out.println("  java -jar target/txt2docx.jar --mode epub2docx -i ./epub -o ./docx --recursive");
         out.println();
         out.println("参数:");
         out.println("  -i, --input <path>       输入文件或目录，可重复");
         out.println("  -o, --output <dir>      输出目录");
-        out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt");
+        out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt / epub2docx");
         out.println("  -r, --recursive         递归扫描子目录");
         out.println("      --overwrite         冲突时覆盖已存在文件 (等价 --on-conflict overwrite)");
         out.println("      --on-conflict <p>   冲突策略: rename(默认) / overwrite / skip");

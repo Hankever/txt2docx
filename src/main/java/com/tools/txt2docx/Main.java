@@ -10,11 +10,9 @@ import javax.swing.UIManager;
 public class Main {
     public static void main(String[] args) {
         if (args.length > 0 && !contains(args, "--gui")) {
-            int exitCode = CliRunner.run(args, System.out, System.err);
-            if (exitCode != 0) {
-                System.exit(exitCode);
-            }
-            return;
+            // Always exit explicitly: FlatLaf / log adapters can leave non-daemon threads
+            // behind, and a missing exit would keep the JVM alive after CLI completion.
+            System.exit(CliRunner.run(args, System.out, System.err));
         }
 
         try {

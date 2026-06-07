@@ -2,6 +2,7 @@ package com.tools.txt2docx.batch;
 
 import com.tools.txt2docx.converter.ConversionOptions;
 import com.tools.txt2docx.converter.DocxToTxtConverter;
+import com.tools.txt2docx.converter.EpubToDocxConverter;
 import com.tools.txt2docx.converter.TxtToDocxConverter;
 
 import java.io.IOException;
@@ -26,6 +27,10 @@ public class BatchProcessor {
     }
 
     private static final int MAX_PARALLELISM = 8;
+    // POI-backed conversions hold the whole XWPFDocument / OPC package in heap. Capping these
+    // modes at 4 keeps peak memory roughly half of MAX_PARALLELISM for the OOM-prone paths,
+    // while TXT_TO_DOCX (cheap text reads) keeps the higher ceiling.
+    private static final int HEAVY_MODE_MAX_PARALLELISM = 4;
 
     private final ConversionOptions options;
     private final ConversionMode mode;
@@ -34,7 +39,7 @@ public class BatchProcessor {
     private volatile ExecutorService activeExecutor;
 
     public BatchProcessor(ConversionOptions options, ConversionMode mode) {
-        this(options, mode, defaultParallelism());
+        this(options, mode, defaultParallelism(mode));
     }
 
     BatchProcessor(ConversionOptions options, ConversionMode mode, int parallelism) {
@@ -43,8 +48,17 @@ public class BatchProcessor {
         this.parallelism = Math.max(1, parallelism);
     }
 
-    private static int defaultParallelism() {
-        return Math.max(1, Math.min(MAX_PARALLELISM, Runtime.getRuntime().availableProcessors()));
+    private static int defaultParallelism(ConversionMode mode) {
+        int cap = isHeavyMode(mode) ? HEAVY_MODE_MAX_PARALLELISM : MAX_PARALLELISM;
+        return Math.max(1, Math.min(cap, Runtime.getRuntime().availableProcessors()));
+    }
+
+    private static boolean isHeavyMode(ConversionMode mode) {
+        return mode == ConversionMode.DOCX_TO_TXT || mode == ConversionMode.EPUB_TO_DOCX;
+    }
+
+    int parallelism() {
+        return parallelism;
     }
 
     public void cancel() {
@@ -180,11 +194,11 @@ public class BatchProcessor {
     }
 
     private void convertFile(Path source, Path target) throws IOException {
-        if (mode == ConversionMode.DOCX_TO_TXT) {
-            new DocxToTxtConverter(options).convert(source, target);
-            return;
+        switch (mode) {
+            case DOCX_TO_TXT -> new DocxToTxtConverter(options).convert(source, target);
+            case EPUB_TO_DOCX -> new EpubToDocxConverter(options).convert(source, target);
+            case TXT_TO_DOCX -> new TxtToDocxConverter(options).convert(source, target);
         }
-        new TxtToDocxConverter(options).convert(source, target);
     }
 
     private BatchItem buildBatchItem(Path inputDir, Path file, boolean preserveDirectoryStructure) {
@@ -242,31 +256,18 @@ public class BatchProcessor {
         return candidate;
     }
 
-    private static Path replaceExtension(Path path) {
+    private Path replaceExtension(Path path) {
         Path parent = path.getParent();
         String name = path.getFileName().toString();
         int dot = name.lastIndexOf('.');
         String base = dot > 0 ? name.substring(0, dot) : name;
-        Path renamed = Paths.get(base + targetExtensionFor(path));
+        Path renamed = Paths.get(base + mode.targetExtension());
         return parent == null ? renamed : parent.resolve(renamed);
     }
 
     private boolean matchesMode(Path p) {
-        return mode == ConversionMode.DOCX_TO_TXT ? isDocx(p) : isTxt(p);
-    }
-
-    private static String targetExtensionFor(Path path) {
-        return isDocx(path) ? ".txt" : ".docx";
-    }
-
-    private static boolean isTxt(Path p) {
         String n = p.getFileName().toString().toLowerCase();
-        return n.endsWith(".txt");
-    }
-
-    private static boolean isDocx(Path p) {
-        String n = p.getFileName().toString().toLowerCase();
-        return n.endsWith(".docx");
+        return n.endsWith(mode.sourceExtension());
     }
 
     private record ResolvedTarget(Path path, boolean skip, String message) {

@@ -32,7 +32,9 @@ public class DocxToTxtConverter {
 
         List<String> lines = splitLines(raw);
         List<String> formatted = TextFormatter.formatLines(lines, options);
-        Files.writeString(outputTxt, String.join(System.lineSeparator(), formatted), resolveCharset());
+        String body = String.join(System.lineSeparator(), formatted);
+        Charset charset = resolveCharset();
+        DocxDocumentWriter.writeAtomically(outputTxt, target -> Files.writeString(target, body, charset));
     }
 
     private static List<String> splitLines(String text) {

@@ -5,6 +5,7 @@ import com.tools.txt2docx.batch.BatchItem;
 import com.tools.txt2docx.batch.ConflictPolicy;
 import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
+import com.tools.txt2docx.batch.PathOverlap;
 import com.tools.txt2docx.converter.ConversionOptions;
 
 import javax.swing.BorderFactory;
@@ -42,8 +43,10 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 public class MainFrame extends JFrame {
 
@@ -65,11 +68,12 @@ public class MainFrame extends JFrame {
     private final JButton cancelBtn = new JButton("取消");
 
     private final List<Path> inputPaths = new ArrayList<>();
+    private final Set<String> inputPathKeys = new HashSet<>();
     private SwingWorker<Void, String> currentWorker;
     private BatchProcessor currentProcessor;
 
     public MainFrame() {
-        super("TXT 批量转 DOCX 工具");
+        super("TXT / EPUB / DOCX 批量转换工具");
         setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         setSize(980, 760);
         setMinimumSize(new Dimension(820, 620));
@@ -207,7 +211,7 @@ public class MainFrame extends JFrame {
         addFilesBtn.addActionListener(e -> onAddFiles());
         addDirBtn.addActionListener(e -> onAddDir());
         removeBtn.addActionListener(e -> onRemoveSelected());
-        clearBtn.addActionListener(e -> { fileListModel.clear(); inputPaths.clear(); });
+        clearBtn.addActionListener(e -> { fileListModel.clear(); inputPaths.clear(); inputPathKeys.clear(); });
         chooseOutputBtn.addActionListener(e -> onChooseOutput());
         convertBtn.addActionListener(e -> onConvert());
         cancelBtn.addActionListener(e -> onCancel());
@@ -270,10 +274,13 @@ public class MainFrame extends JFrame {
     private void onAddFiles() {
         JFileChooser fc = new JFileChooser();
         fc.setMultiSelectionEnabled(true);
-        if (optionsPanel.getMode() == ConversionMode.DOCX_TO_TXT) {
-            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Word 文件 (*.docx)", "docx"));
-        } else {
-            fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
+        switch (optionsPanel.getMode()) {
+            case DOCX_TO_TXT ->
+                    fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Word 文件 (*.docx)", "docx"));
+            case EPUB_TO_DOCX ->
+                    fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("EPUB 文件 (*.epub)", "epub"));
+            case TXT_TO_DOCX ->
+                    fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
         }
         if (fc.showOpenDialog(this) == JFileChooser.APPROVE_OPTION) {
             for (File f : fc.getSelectedFiles()) {
@@ -294,7 +301,8 @@ public class MainFrame extends JFrame {
         int[] idx = fileList.getSelectedIndices();
         for (int i = idx.length - 1; i >= 0; i--) {
             fileListModel.remove(idx[i]);
-            inputPaths.remove(idx[i]);
+            Path removed = inputPaths.remove(idx[i]);
+            inputPathKeys.remove(pathKey(removed));
         }
     }
 
@@ -307,8 +315,17 @@ public class MainFrame extends JFrame {
     }
 
     private void addInputPath(Path p) {
+        String key = pathKey(p);
+        if (!inputPathKeys.add(key)) {
+            return;
+        }
         inputPaths.add(p);
         fileListModel.addElement(p.toString());
+    }
+
+    private static String pathKey(Path p) {
+        String normalized = p.toAbsolutePath().normalize().toString();
+        return isCaseInsensitiveFileSystem() ? normalized.toLowerCase() : normalized;
     }
 
     private void onConvert() {
@@ -323,7 +340,7 @@ public class MainFrame extends JFrame {
         }
         Path outputDir = Paths.get(outDir);
 
-        String overlap = findOverlap(inputPaths, outputDir);
+        String overlap = PathOverlap.check(inputPaths, outputDir);
         if (overlap != null) {
             JOptionPane.showMessageDialog(this, overlap, "目录冲突", JOptionPane.WARNING_MESSAGE);
             return;
@@ -349,13 +366,14 @@ public class MainFrame extends JFrame {
 
         currentWorker = new SwingWorker<>() {
             int total = 0;
+            volatile String failureMessage;
 
             @Override
             protected Void doInBackground() {
                 try {
                     List<BatchItem> files = currentProcessor.collectFiles(snapshot, recursive, preserveTree);
                     total = files.size();
-                    publish("共找到 " + total + " 个" + (mode == ConversionMode.DOCX_TO_TXT ? " .docx " : " .txt ") + "文件");
+                    publish("共找到 " + total + " 个 " + mode.sourceExtension() + " 文件");
                     SwingUtilities.invokeLater(() -> {
                         progressBar.setIndeterminate(false);
                         progressBar.setMaximum(Math.max(1, total));
@@ -364,11 +382,14 @@ public class MainFrame extends JFrame {
                     currentProcessor.process(files, outputDir, policy, (done, tot, last) -> {
                         publish(formatResult(last));
                         setProgress((int) ((done * 100.0) / tot));
-                        progressBar.setValue(done);
-                        progressBar.setString(done + " / " + tot);
+                        SwingUtilities.invokeLater(() -> {
+                            progressBar.setValue(done);
+                            progressBar.setString(done + " / " + tot);
+                        });
                     });
                 } catch (Exception ex) {
-                    publish("错误: " + ex.getMessage());
+                    failureMessage = ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage();
+                    publish("错误: " + failureMessage);
                 }
                 return null;
             }
@@ -386,9 +407,22 @@ public class MainFrame extends JFrame {
                 progressBar.setIndeterminate(false);
                 convertBtn.setEnabled(true);
                 cancelBtn.setEnabled(false);
-                progressBar.setString("完成");
-                logArea.append("---- 转换结束 ----" + System.lineSeparator());
-                if (openAfter && total > 0) {
+
+                // Keep "已取消" / surface "失败" instead of clobbering with "完成". SwingWorker
+                // runs done() after both successful completion and cancel(), so we have to
+                // distinguish here rather than relying on get().
+                boolean cancelled = isCancelled();
+                if (cancelled) {
+                    progressBar.setString("已取消");
+                    logArea.append("---- 已取消 ----" + System.lineSeparator());
+                } else if (failureMessage != null) {
+                    progressBar.setString("失败: " + failureMessage);
+                    logArea.append("---- 转换失败 ----" + System.lineSeparator());
+                } else {
+                    progressBar.setString("完成");
+                    logArea.append("---- 转换结束 ----" + System.lineSeparator());
+                }
+                if (!cancelled && failureMessage == null && openAfter && total > 0) {
                     openOutputDir(outputDir);
                 }
             }
@@ -396,31 +430,26 @@ public class MainFrame extends JFrame {
         currentWorker.execute();
     }
 
-    private String findOverlap(List<Path> inputs, Path outputDir) {
-        Path out = outputDir.toAbsolutePath().normalize();
-        for (Path raw : inputs) {
-            Path in = raw.toAbsolutePath().normalize();
-            if (out.equals(in)) {
-                return "输出目录不能与输入目录相同: " + in;
-            }
-            if (out.startsWith(in)) {
-                return "输出目录位于输入目录内,会导致重复扫描或覆盖源文件:\n输入: " + in + "\n输出: " + out;
-            }
-            if (in.startsWith(out)) {
-                return "输入目录位于输出目录内,可能误读旧的转换结果:\n输出: " + out + "\n输入: " + in;
-            }
-        }
-        return null;
+    private static boolean isCaseInsensitiveFileSystem() {
+        String os = System.getProperty("os.name", "").toLowerCase();
+        return os.contains("win") || os.contains("mac");
     }
 
     private void openOutputDir(Path dir) {
-        try {
-            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
-                Desktop.getDesktop().open(dir.toFile());
+        // Desktop.open() shells out to the OS file manager and can block the EDT for hundreds
+        // of milliseconds on some systems. Run it off the EDT and marshal failures back.
+        Thread t = new Thread(() -> {
+            try {
+                if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                    Desktop.getDesktop().open(dir.toFile());
+                }
+            } catch (Exception ex) {
+                SwingUtilities.invokeLater(() ->
+                        logArea.append("打开输出目录失败: " + ex.getMessage() + System.lineSeparator()));
             }
-        } catch (Exception ex) {
-            logArea.append("打开输出目录失败: " + ex.getMessage() + System.lineSeparator());
-        }
+        }, "txt2docx-open-output");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void onCancel() {
@@ -443,9 +472,17 @@ public class MainFrame extends JFrame {
 
     private void refreshModeDependentUi() {
         optionsPanel.refreshModeDependentUi();
-        boolean txtToDocx = optionsPanel.getMode() == ConversionMode.TXT_TO_DOCX;
-        addFilesBtn.setText(txtToDocx ? "添加 TXT..." : "添加 DOCX...");
-        setTitle(txtToDocx ? "TXT 批量转 DOCX 工具" : "DOCX 批量转 TXT 工具");
+        ConversionMode mode = optionsPanel.getMode();
+        addFilesBtn.setText(switch (mode) {
+            case DOCX_TO_TXT -> "添加 DOCX...";
+            case EPUB_TO_DOCX -> "添加 EPUB...";
+            case TXT_TO_DOCX -> "添加 TXT...";
+        });
+        setTitle(switch (mode) {
+            case DOCX_TO_TXT -> "DOCX 批量转 TXT 工具";
+            case EPUB_TO_DOCX -> "EPUB 批量转 DOCX 工具";
+            case TXT_TO_DOCX -> "TXT 批量转 DOCX 工具";
+        });
     }
 
     private String formatResult(ConversionResult r) {

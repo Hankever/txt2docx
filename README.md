@@ -1,6 +1,6 @@
 # Txt2Docx
 
-Java 实现的 TXT / DOCX 批量互转工具，支持桌面界面和命令行两种使用方式。
+Java 实现的 TXT / EPUB / DOCX 批量转换工具，支持桌面界面和命令行两种使用方式。
 
 ## 下载
 
@@ -14,7 +14,9 @@ Java 实现的 TXT / DOCX 批量互转工具，支持桌面界面和命令行两
 
 ## 功能
 
-- 批量选择多个 `txt` / `docx` 文件或整个目录进行转换
+- 批量选择多个 `txt` / `epub` / `docx` 文件或整个目录进行转换
+- 支持 `txt` 转 `docx`、`epub` 转 `docx`、`docx` 转 `txt`
+- EPUB 转 DOCX 会按章节顺序提取正文，并嵌入 EPUB 内的常见图片资源（PNG/JPEG/GIF/BMP/TIFF）
 - 自动识别常见文本编码，也可手动指定编码
 - 可设置字体、字号、页边距
 - 可按需删除空格、删除空行、设置 Word 段落首行缩进、在行间插入空行
@@ -58,7 +60,13 @@ DOCX 转 TXT：
 java -jar target/txt2docx.jar --mode docx2txt --input ./docx --output ./txt --recursive
 ```
 
-带格式选项的 TXT 转 DOCX：
+EPUB 转 DOCX：
+
+```bash
+java -jar target/txt2docx.jar --mode epub2docx --input ./epub --output ./docx --recursive
+```
+
+带格式选项的 TXT / EPUB 转 DOCX：
 
 ```bash
 java -jar target/txt2docx.jar \
@@ -83,6 +91,11 @@ java -jar target/txt2docx.jar --help
 - `--remove-empty-lines` 删除空行
 - `--indent <n>` 设置 Word 段落首行缩进 `n` 个字符，`2` 即常见中文段首缩进
 - `--blank-line-between-lines` 在相邻文本行之间插入一空行
+
+EPUB 图片说明：
+
+- 支持 EPUB 包内相对路径图片和 `data:image/...;base64` 图片
+- 不下载外链图片，不保留 CSS、SVG 矢量图或复杂版式
 
 构建提示：
 

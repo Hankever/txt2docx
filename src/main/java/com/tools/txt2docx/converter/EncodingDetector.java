@@ -34,7 +34,9 @@ public final class EncodingDetector {
         }
         // BOMless UTF-8 is the most common case for files saved by modern editors. Try strict
         // decode first — if it succeeds, trust UTF-8 regardless of what the heuristic guesses.
-        if (isStrictlyDecodable(head, StandardCharsets.UTF_8)) {
+        // Trim to the last complete UTF-8 sequence so a multi-byte char straddling the 8192-byte
+        // read boundary doesn't masquerade as a decode failure.
+        if (isStrictlyDecodable(trimToUtf8Boundary(head), StandardCharsets.UTF_8)) {
             return StandardCharsets.UTF_8;
         }
         UniversalDetector detector = new UniversalDetector(null);
@@ -68,6 +70,32 @@ public final class EncodingDetector {
             return 2;
         }
         return 0;
+    }
+
+    private static byte[] trimToUtf8Boundary(byte[] bytes) {
+        if (bytes.length == 0) return bytes;
+        int cut = bytes.length;
+        // Walk back over continuation bytes (10xxxxxx) until we hit either an ASCII byte or a
+        // lead byte. If that lead byte's expected sequence runs off the end of the buffer,
+        // drop it too.
+        int trailing = 0;
+        while (cut > 0 && (bytes[cut - 1] & 0xC0) == 0x80 && trailing < 3) {
+            cut--;
+            trailing++;
+        }
+        if (cut > 0) {
+            int lead = bytes[cut - 1] & 0xFF;
+            int expected;
+            if ((lead & 0x80) == 0) expected = 0;
+            else if ((lead & 0xE0) == 0xC0) expected = 1;
+            else if ((lead & 0xF0) == 0xE0) expected = 2;
+            else if ((lead & 0xF8) == 0xF0) expected = 3;
+            else expected = -1; // illegal lead byte — let the strict decoder reject it
+            if (expected >= 0 && trailing < expected) {
+                cut--; // sequence is incomplete at the buffer edge
+            }
+        }
+        return cut == bytes.length ? bytes : java.util.Arrays.copyOf(bytes, cut);
     }
 
     private static boolean isStrictlyDecodable(byte[] bytes, Charset charset) {
