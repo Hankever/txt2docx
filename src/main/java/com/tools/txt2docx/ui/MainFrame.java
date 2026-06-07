@@ -2,6 +2,7 @@ package com.tools.txt2docx.ui;
 
 import com.tools.txt2docx.batch.BatchProcessor;
 import com.tools.txt2docx.batch.BatchItem;
+import com.tools.txt2docx.batch.ConflictPolicy;
 import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
 import com.tools.txt2docx.converter.ConversionOptions;
@@ -11,12 +12,10 @@ import javax.swing.Box;
 import javax.swing.BoxLayout;
 import javax.swing.ButtonGroup;
 import javax.swing.DefaultListModel;
+import javax.swing.DropMode;
 import javax.swing.JButton;
-import javax.swing.JCheckBox;
-import javax.swing.JComboBox;
 import javax.swing.JFileChooser;
 import javax.swing.JFrame;
-import javax.swing.JLabel;
 import javax.swing.JList;
 import javax.swing.JMenu;
 import javax.swing.JMenuBar;
@@ -25,69 +24,37 @@ import javax.swing.JPanel;
 import javax.swing.JProgressBar;
 import javax.swing.JRadioButtonMenuItem;
 import javax.swing.JScrollPane;
-import javax.swing.JSpinner;
 import javax.swing.JSplitPane;
 import javax.swing.JTextArea;
 import javax.swing.JTextField;
-import javax.swing.SpinnerNumberModel;
 import javax.swing.SwingUtilities;
 import javax.swing.SwingWorker;
+import javax.swing.TransferHandler;
 import java.awt.BorderLayout;
 import java.awt.Color;
+import java.awt.Desktop;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
-import java.awt.GridBagConstraints;
-import java.awt.GridBagLayout;
 import java.awt.Insets;
+import java.awt.datatransfer.DataFlavor;
 import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.prefs.Preferences;
+import java.util.Map;
 
 public class MainFrame extends JFrame {
 
-    private static final String PREF_MODE = "mode";
-    private static final String PREF_OUTPUT_DIR = "outputDir";
-    private static final String PREF_FONT = "font";
-    private static final String PREF_FONT_SIZE = "fontSize";
-    private static final String PREF_MARGIN_TOP = "marginTop";
-    private static final String PREF_MARGIN_BOTTOM = "marginBottom";
-    private static final String PREF_MARGIN_LEFT = "marginLeft";
-    private static final String PREF_MARGIN_RIGHT = "marginRight";
-    private static final String PREF_INDENT = "indent";
-    private static final String PREF_ENCODING = "encoding";
-    private static final String PREF_RECURSIVE = "recursive";
-    private static final String PREF_PRESERVE_TREE = "preserveTree";
-    private static final String PREF_OVERWRITE = "overwrite";
-    private static final String PREF_REMOVE_SPACES = "removeSpaces";
-    private static final String PREF_REMOVE_EMPTY_LINES = "removeEmptyLines";
-    private static final String PREF_BLANK_LINE_BETWEEN_LINES = "blankLineBetweenLines";
+    private final PreferencesStore prefs = new PreferencesStore();
+    private final OptionsPanel optionsPanel = new OptionsPanel();
 
     private final DefaultListModel<String> fileListModel = new DefaultListModel<>();
     private final JList<String> fileList = new JList<>(fileListModel);
     private final JTextField outputDirField = new JTextField();
     private final JTextArea logArea = new JTextArea();
     private final JProgressBar progressBar = new JProgressBar();
-    private final Preferences prefs = Preferences.userNodeForPackage(MainFrame.class);
-
-    private final JComboBox<String> modeBox = new JComboBox<>(new String[]{"TXT -> DOCX", "DOCX -> TXT"});
-    private final JComboBox<String> fontBox = new JComboBox<>(new String[]{"宋体", "微软雅黑", "黑体", "楷体", "仿宋", "Times New Roman", "Arial"});
-    private final JSpinner fontSizeSpinner = new JSpinner(new SpinnerNumberModel(12, 6, 72, 1));
-    private final JSpinner marginTopSpinner = new JSpinner(new SpinnerNumberModel(2.54, 0.0, 10.0, 0.1));
-    private final JSpinner marginBottomSpinner = new JSpinner(new SpinnerNumberModel(2.54, 0.0, 10.0, 0.1));
-    private final JSpinner marginLeftSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
-    private final JSpinner marginRightSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
-    private final JSpinner indentSpinner = new JSpinner(new SpinnerNumberModel(2, 0, 10, 1));
-    private final JComboBox<String> encodingBox = new JComboBox<>(new String[]{"AUTO", "UTF-8", "GBK", "GB2312", "GB18030", "UTF-16LE", "UTF-16BE", "Big5"});
-    private final JCheckBox recursiveBox = new JCheckBox("递归子目录", true);
-    private final JCheckBox preserveTreeBox = new JCheckBox("保留目录结构", true);
-    private final JCheckBox overwriteBox = new JCheckBox("覆盖已有文件", false);
-    private final JCheckBox removeSpacesBox = new JCheckBox("删除空格", true);
-    private final JCheckBox removeEmptyLinesBox = new JCheckBox("删除空行", true);
-    private final JCheckBox blankLineBetweenLinesBox = new JCheckBox("行间加空行", true);
 
     private final JButton addFilesBtn = new JButton("添加文件...");
     private final JButton addDirBtn = new JButton("添加目录...");
@@ -108,7 +75,6 @@ public class MainFrame extends JFrame {
         setMinimumSize(new Dimension(820, 620));
         setLocationRelativeTo(null);
 
-        applyOptionFieldSizes();
         setJMenuBar(buildMenuBar());
         setContentPane(buildContent());
         applyComponentStyles();
@@ -123,7 +89,7 @@ public class MainFrame extends JFrame {
         JMenu theme = new JMenu("主题");
         ButtonGroup group = new ButtonGroup();
         String current = ThemeManager.getSavedThemeId();
-        for (java.util.Map.Entry<String, String> e : ThemeManager.themes().entrySet()) {
+        for (Map.Entry<String, String> e : ThemeManager.themes().entrySet()) {
             String id = e.getKey();
             JRadioButtonMenuItem item = new JRadioButtonMenuItem(e.getValue(), id.equals(current));
             item.addActionListener(ev -> switchTheme(id));
@@ -180,7 +146,7 @@ public class MainFrame extends JFrame {
         top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
         top.add(buildOutputRow());
         top.add(Box.createVerticalStrut(10));
-        top.add(buildOptionsPanel());
+        top.add(optionsPanel);
         return top;
     }
 
@@ -193,124 +159,6 @@ public class MainFrame extends JFrame {
         p.add(outputDirField, BorderLayout.CENTER);
         p.add(chooseOutputBtn, BorderLayout.EAST);
         return p;
-    }
-
-    private JPanel buildOptionsPanel() {
-        JPanel p = new JPanel(new BorderLayout(8, 8));
-        p.setBorder(BorderFactory.createTitledBorder("转换设置"));
-        JPanel top = new JPanel(new BorderLayout(8, 0));
-        top.add(buildBasicOptionsSection(), BorderLayout.WEST);
-        top.add(buildLayoutOptionsSection(), BorderLayout.CENTER);
-        p.add(top, BorderLayout.NORTH);
-        p.add(buildCheckboxSection(), BorderLayout.CENTER);
-        return p;
-    }
-
-    private JPanel buildBasicOptionsSection() {
-        JPanel p = createSectionPanel("基础");
-        GridBagConstraints c = baseConstraints();
-
-        addLabel(p, c, 0, 0, "转换方向");
-        addField(p, c, 1, 0, modeBox);
-        addLabel(p, c, 2, 0, "编码");
-        addField(p, c, 3, 0, encodingBox);
-
-        addLabel(p, c, 0, 1, "字体");
-        addField(p, c, 1, 1, fontBox);
-        addLabel(p, c, 2, 1, "字号");
-        addField(p, c, 3, 1, fontSizeSpinner);
-
-        return p;
-    }
-
-    private JPanel buildLayoutOptionsSection() {
-        JPanel p = createSectionPanel("版式");
-        GridBagConstraints c = baseConstraints();
-
-        addLabel(p, c, 0, 0, "文本缩进");
-        addField(p, c, 1, 0, indentSpinner);
-        addLabel(p, c, 2, 0, "上边距(cm)");
-        addField(p, c, 3, 0, marginTopSpinner);
-
-        addLabel(p, c, 0, 1, "下边距(cm)");
-        addField(p, c, 1, 1, marginBottomSpinner);
-        addLabel(p, c, 2, 1, "左边距(cm)");
-        addField(p, c, 3, 1, marginLeftSpinner);
-
-        addLabel(p, c, 0, 2, "右边距(cm)");
-        addField(p, c, 1, 2, marginRightSpinner);
-
-        return p;
-    }
-
-    private JPanel buildCheckboxSection() {
-        JPanel p = createSectionPanel("选项");
-        GridBagConstraints c = baseConstraints();
-
-        c.gridx = 0; c.gridy = 0; c.gridwidth = 1;
-        p.add(removeSpacesBox, c);
-        c.gridx = 1; c.gridy = 0; c.gridwidth = 1;
-        p.add(removeEmptyLinesBox, c);
-        c.gridx = 2; c.gridy = 0; c.gridwidth = 1;
-        p.add(blankLineBetweenLinesBox, c);
-
-        c.gridx = 0; c.gridy = 1; c.gridwidth = 1;
-        p.add(recursiveBox, c);
-        c.gridx = 1; c.gridy = 1; c.gridwidth = 1;
-        p.add(preserveTreeBox, c);
-        c.gridx = 2; c.gridy = 1; c.gridwidth = 1;
-        p.add(overwriteBox, c);
-
-        return p;
-    }
-
-    private JPanel createSectionPanel(String title) {
-        JPanel p = new JPanel(new GridBagLayout());
-        p.setBorder(BorderFactory.createCompoundBorder(
-                BorderFactory.createTitledBorder(title),
-                BorderFactory.createEmptyBorder(4, 6, 4, 6)
-        ));
-        return p;
-    }
-
-    private GridBagConstraints baseConstraints() {
-        GridBagConstraints c = new GridBagConstraints();
-        c.insets = new Insets(4, 6, 4, 10);
-        c.anchor = GridBagConstraints.WEST;
-        c.fill = GridBagConstraints.HORIZONTAL;
-        c.weightx = 1.0;
-        return c;
-    }
-
-    private void addLabel(JPanel p, GridBagConstraints c, int x, int y, String text) {
-        c.gridx = x; c.gridy = y; c.weightx = 0;
-        p.add(new JLabel(text), c);
-    }
-
-    private void addField(JPanel p, GridBagConstraints c, int x, int y, java.awt.Component comp) {
-        c.gridx = x; c.gridy = y; c.weightx = 0;
-        c.fill = GridBagConstraints.NONE;
-        p.add(comp, c);
-        c.fill = GridBagConstraints.HORIZONTAL;
-    }
-
-    private void applyOptionFieldSizes() {
-        setCompactWidth(modeBox, 150);
-        setCompactWidth(fontBox, 120);
-        setCompactWidth(fontSizeSpinner, 90);
-        setCompactWidth(marginTopSpinner, 90);
-        setCompactWidth(marginBottomSpinner, 90);
-        setCompactWidth(marginLeftSpinner, 90);
-        setCompactWidth(marginRightSpinner, 90);
-        setCompactWidth(indentSpinner, 90);
-        setCompactWidth(encodingBox, 120);
-    }
-
-    private void setCompactWidth(java.awt.Component comp, int width) {
-        Dimension preferred = comp.getPreferredSize();
-        Dimension size = new Dimension(width, preferred.height);
-        comp.setPreferredSize(size);
-        comp.setMinimumSize(size);
     }
 
     private JSplitPane buildCenterSplit() {
@@ -363,14 +211,66 @@ public class MainFrame extends JFrame {
         chooseOutputBtn.addActionListener(e -> onChooseOutput());
         convertBtn.addActionListener(e -> onConvert());
         cancelBtn.addActionListener(e -> onCancel());
-        modeBox.addActionListener(e -> refreshModeDependentUi());
+        optionsPanel.onModeChanged(mode -> refreshModeDependentUi());
+        installFileDropHandler();
         refreshModeDependentUi();
+    }
+
+    private void installFileDropHandler() {
+        fileList.setTransferHandler(new TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) return false;
+                try {
+                    List<File> dropped = (List<File>) support.getTransferable()
+                            .getTransferData(DataFlavor.javaFileListFlavor);
+                    for (File f : dropped) {
+                        addInputPath(f.toPath());
+                    }
+                    return true;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }
+        });
+        fileList.setDropMode(DropMode.ON);
+        outputDirField.setTransferHandler(new TransferHandler() {
+            @Override
+            public boolean canImport(TransferSupport support) {
+                return support.isDataFlavorSupported(DataFlavor.javaFileListFlavor);
+            }
+
+            @Override
+            @SuppressWarnings("unchecked")
+            public boolean importData(TransferSupport support) {
+                if (!canImport(support)) return false;
+                try {
+                    List<File> dropped = (List<File>) support.getTransferable()
+                            .getTransferData(DataFlavor.javaFileListFlavor);
+                    for (File f : dropped) {
+                        if (f.isDirectory()) {
+                            outputDirField.setText(f.getAbsolutePath());
+                            return true;
+                        }
+                    }
+                    return false;
+                } catch (Exception ex) {
+                    return false;
+                }
+            }
+        });
     }
 
     private void onAddFiles() {
         JFileChooser fc = new JFileChooser();
         fc.setMultiSelectionEnabled(true);
-        if (getSelectedMode() == ConversionMode.DOCX_TO_TXT) {
+        if (optionsPanel.getMode() == ConversionMode.DOCX_TO_TXT) {
             fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Word 文件 (*.docx)", "docx"));
         } else {
             fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
@@ -423,19 +323,27 @@ public class MainFrame extends JFrame {
         }
         Path outputDir = Paths.get(outDir);
 
-        ConversionOptions options = buildOptions();
-        boolean recursive = recursiveBox.isSelected();
-        boolean preserveTree = preserveTreeBox.isSelected();
-        boolean overwrite = overwriteBox.isSelected();
-        ConversionMode mode = getSelectedMode();
+        String overlap = findOverlap(inputPaths, outputDir);
+        if (overlap != null) {
+            JOptionPane.showMessageDialog(this, overlap, "目录冲突", JOptionPane.WARNING_MESSAGE);
+            return;
+        }
+
+        ConversionOptions options = optionsPanel.buildConversionOptions();
+        boolean recursive = optionsPanel.isRecursive();
+        boolean preserveTree = optionsPanel.isPreserveTree();
+        ConflictPolicy policy = optionsPanel.getConflictPolicy();
+        boolean openAfter = optionsPanel.isOpenAfterDone();
+        ConversionMode mode = optionsPanel.getMode();
         savePreferences();
 
         currentProcessor = new BatchProcessor(options, mode);
         List<Path> snapshot = new ArrayList<>(inputPaths);
 
         logArea.setText("");
+        progressBar.setIndeterminate(true);
         progressBar.setValue(0);
-        progressBar.setString("准备中...");
+        progressBar.setString("收集文件中...");
         convertBtn.setEnabled(false);
         cancelBtn.setEnabled(true);
 
@@ -448,9 +356,12 @@ public class MainFrame extends JFrame {
                     List<BatchItem> files = currentProcessor.collectFiles(snapshot, recursive, preserveTree);
                     total = files.size();
                     publish("共找到 " + total + " 个" + (mode == ConversionMode.DOCX_TO_TXT ? " .docx " : " .txt ") + "文件");
+                    SwingUtilities.invokeLater(() -> {
+                        progressBar.setIndeterminate(false);
+                        progressBar.setMaximum(Math.max(1, total));
+                    });
                     if (total == 0) return null;
-                    progressBar.setMaximum(total);
-                    currentProcessor.process(files, outputDir, overwrite, (done, tot, last) -> {
+                    currentProcessor.process(files, outputDir, policy, (done, tot, last) -> {
                         publish(formatResult(last));
                         setProgress((int) ((done * 100.0) / tot));
                         progressBar.setValue(done);
@@ -472,13 +383,44 @@ public class MainFrame extends JFrame {
 
             @Override
             protected void done() {
+                progressBar.setIndeterminate(false);
                 convertBtn.setEnabled(true);
                 cancelBtn.setEnabled(false);
                 progressBar.setString("完成");
                 logArea.append("---- 转换结束 ----" + System.lineSeparator());
+                if (openAfter && total > 0) {
+                    openOutputDir(outputDir);
+                }
             }
         };
         currentWorker.execute();
+    }
+
+    private String findOverlap(List<Path> inputs, Path outputDir) {
+        Path out = outputDir.toAbsolutePath().normalize();
+        for (Path raw : inputs) {
+            Path in = raw.toAbsolutePath().normalize();
+            if (out.equals(in)) {
+                return "输出目录不能与输入目录相同: " + in;
+            }
+            if (out.startsWith(in)) {
+                return "输出目录位于输入目录内,会导致重复扫描或覆盖源文件:\n输入: " + in + "\n输出: " + out;
+            }
+            if (in.startsWith(out)) {
+                return "输入目录位于输出目录内,可能误读旧的转换结果:\n输出: " + out + "\n输入: " + in;
+            }
+        }
+        return null;
+    }
+
+    private void openOutputDir(Path dir) {
+        try {
+            if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.OPEN)) {
+                Desktop.getDesktop().open(dir.toFile());
+            }
+        } catch (Exception ex) {
+            logArea.append("打开输出目录失败: " + ex.getMessage() + System.lineSeparator());
+        }
     }
 
     private void onCancel() {
@@ -488,83 +430,20 @@ public class MainFrame extends JFrame {
         progressBar.setString("已取消");
     }
 
-    private ConversionOptions buildOptions() {
-        ConversionOptions o = new ConversionOptions();
-        o.setFontFamily((String) fontBox.getSelectedItem());
-        o.setFontSize(((Number) fontSizeSpinner.getValue()).intValue());
-        o.setMarginTopCm(((Number) marginTopSpinner.getValue()).doubleValue());
-        o.setMarginBottomCm(((Number) marginBottomSpinner.getValue()).doubleValue());
-        o.setMarginLeftCm(((Number) marginLeftSpinner.getValue()).doubleValue());
-        o.setMarginRightCm(((Number) marginRightSpinner.getValue()).doubleValue());
-        o.setEncoding((String) encodingBox.getSelectedItem());
-        o.setRemoveSpaces(removeSpacesBox.isSelected());
-        o.setRemoveEmptyLines(removeEmptyLinesBox.isSelected());
-        o.setIndentSize(((Number) indentSpinner.getValue()).intValue());
-        o.setAddBlankLineBetweenLines(blankLineBetweenLinesBox.isSelected());
-        return o;
-    }
-
     private void loadPreferences() {
-        modeBox.setSelectedIndex(prefs.getInt(PREF_MODE, 0));
-        outputDirField.setText(prefs.get(PREF_OUTPUT_DIR, ""));
-        setComboValue(fontBox, prefs.get(PREF_FONT, "宋体"));
-        fontSizeSpinner.setValue(prefs.getInt(PREF_FONT_SIZE, 12));
-        marginTopSpinner.setValue(prefs.getDouble(PREF_MARGIN_TOP, 2.54));
-        marginBottomSpinner.setValue(prefs.getDouble(PREF_MARGIN_BOTTOM, 2.54));
-        marginLeftSpinner.setValue(prefs.getDouble(PREF_MARGIN_LEFT, 3.18));
-        marginRightSpinner.setValue(prefs.getDouble(PREF_MARGIN_RIGHT, 3.18));
-        indentSpinner.setValue(prefs.getInt(PREF_INDENT, 2));
-        setComboValue(encodingBox, prefs.get(PREF_ENCODING, "AUTO"));
-        recursiveBox.setSelected(prefs.getBoolean(PREF_RECURSIVE, true));
-        preserveTreeBox.setSelected(prefs.getBoolean(PREF_PRESERVE_TREE, true));
-        overwriteBox.setSelected(prefs.getBoolean(PREF_OVERWRITE, false));
-        removeSpacesBox.setSelected(prefs.getBoolean(PREF_REMOVE_SPACES, true));
-        removeEmptyLinesBox.setSelected(prefs.getBoolean(PREF_REMOVE_EMPTY_LINES, true));
-        blankLineBetweenLinesBox.setSelected(prefs.getBoolean(PREF_BLANK_LINE_BETWEEN_LINES, true));
+        outputDirField.setText(prefs.getOutputDir());
+        optionsPanel.loadFrom(prefs);
         refreshModeDependentUi();
     }
 
     private void savePreferences() {
-        prefs.putInt(PREF_MODE, modeBox.getSelectedIndex());
-        prefs.put(PREF_OUTPUT_DIR, outputDirField.getText().trim());
-        prefs.put(PREF_FONT, String.valueOf(fontBox.getSelectedItem()));
-        prefs.putInt(PREF_FONT_SIZE, ((Number) fontSizeSpinner.getValue()).intValue());
-        prefs.putDouble(PREF_MARGIN_TOP, ((Number) marginTopSpinner.getValue()).doubleValue());
-        prefs.putDouble(PREF_MARGIN_BOTTOM, ((Number) marginBottomSpinner.getValue()).doubleValue());
-        prefs.putDouble(PREF_MARGIN_LEFT, ((Number) marginLeftSpinner.getValue()).doubleValue());
-        prefs.putDouble(PREF_MARGIN_RIGHT, ((Number) marginRightSpinner.getValue()).doubleValue());
-        prefs.putInt(PREF_INDENT, ((Number) indentSpinner.getValue()).intValue());
-        prefs.put(PREF_ENCODING, String.valueOf(encodingBox.getSelectedItem()));
-        prefs.putBoolean(PREF_RECURSIVE, recursiveBox.isSelected());
-        prefs.putBoolean(PREF_PRESERVE_TREE, preserveTreeBox.isSelected());
-        prefs.putBoolean(PREF_OVERWRITE, overwriteBox.isSelected());
-        prefs.putBoolean(PREF_REMOVE_SPACES, removeSpacesBox.isSelected());
-        prefs.putBoolean(PREF_REMOVE_EMPTY_LINES, removeEmptyLinesBox.isSelected());
-        prefs.putBoolean(PREF_BLANK_LINE_BETWEEN_LINES, blankLineBetweenLinesBox.isSelected());
-    }
-
-    private void setComboValue(JComboBox<String> comboBox, String value) {
-        for (int i = 0; i < comboBox.getItemCount(); i++) {
-            if (comboBox.getItemAt(i).equals(value)) {
-                comboBox.setSelectedIndex(i);
-                return;
-            }
-        }
-    }
-
-    private ConversionMode getSelectedMode() {
-        return modeBox.getSelectedIndex() == 1 ? ConversionMode.DOCX_TO_TXT : ConversionMode.TXT_TO_DOCX;
+        prefs.setOutputDir(outputDirField.getText().trim());
+        optionsPanel.saveTo(prefs);
     }
 
     private void refreshModeDependentUi() {
-        boolean txtToDocx = getSelectedMode() == ConversionMode.TXT_TO_DOCX;
-        fontBox.setEnabled(txtToDocx);
-        fontSizeSpinner.setEnabled(txtToDocx);
-        indentSpinner.setEnabled(txtToDocx);
-        marginTopSpinner.setEnabled(txtToDocx);
-        marginBottomSpinner.setEnabled(txtToDocx);
-        marginLeftSpinner.setEnabled(txtToDocx);
-        marginRightSpinner.setEnabled(txtToDocx);
+        optionsPanel.refreshModeDependentUi();
+        boolean txtToDocx = optionsPanel.getMode() == ConversionMode.TXT_TO_DOCX;
         addFilesBtn.setText(txtToDocx ? "添加 TXT..." : "添加 DOCX...");
         setTitle(txtToDocx ? "TXT 批量转 DOCX 工具" : "DOCX 批量转 TXT 工具");
     }

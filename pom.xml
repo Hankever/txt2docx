@@ -6,7 +6,7 @@
 
     <groupId>com.tools</groupId>
     <artifactId>txt2docx</artifactId>
-    <version>2.0.1</version>
+    <version>2.1.0</version>
     <packaging>jar</packaging>
 
     <name>Txt2Docx</name>
@@ -18,8 +18,10 @@
         <maven.compiler.target>17</maven.compiler.target>
         <main.class>com.tools.txt2docx.Main</main.class>
         <poi.version>5.2.5</poi.version>
-        <log4j2.version>2.21.1</log4j2.version>
         <flatlaf.version>3.4</flatlaf.version>
+        <junit.version>5.10.2</junit.version>
+        <slf4j.version>1.7.36</slf4j.version>
+        <log4j2.version>2.21.1</log4j2.version>
     </properties>
 
     <dependencies>
@@ -33,10 +35,18 @@
             <artifactId>juniversalchardet</artifactId>
             <version>1.0.3</version>
         </dependency>
+        <!-- POI uses log4j-api as its logging facade. Without an implementation it prints
+             a StatusLogger warning on every run. Bridge log4j-api → slf4j → nop to silence
+             it while keeping the JAR ~1.8 MB smaller than shipping log4j-core. -->
         <dependency>
             <groupId>org.apache.logging.log4j</groupId>
-            <artifactId>log4j-core</artifactId>
+            <artifactId>log4j-to-slf4j</artifactId>
             <version>${log4j2.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-nop</artifactId>
+            <version>${slf4j.version}</version>
         </dependency>
         <dependency>
             <groupId>com.formdev</groupId>
@@ -48,11 +58,22 @@
             <artifactId>flatlaf-extras</artifactId>
             <version>${flatlaf.version}</version>
         </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>
         <finalName>txt2docx</finalName>
         <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>3.2.5</version>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-shade-plugin</artifactId>

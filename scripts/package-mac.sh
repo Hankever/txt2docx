@@ -13,7 +13,7 @@ mkdir -p "$DIST_DIR"
 jpackage \
   --type dmg \
   --name Txt2Docx \
-  --app-version 2.0.1 \
+  --app-version 2.1.0 \
   --vendor com.tools \
   --description "TXT 批量转 DOCX 工具" \
   --input "$ROOT_DIR/target" \

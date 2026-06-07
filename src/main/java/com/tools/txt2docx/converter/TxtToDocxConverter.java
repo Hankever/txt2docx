@@ -9,13 +9,15 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.InputStreamReader;
 import java.io.OutputStream;
-import java.io.StringReader;
+import java.io.PushbackInputStream;
 import java.math.BigInteger;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 public class TxtToDocxConverter {
@@ -32,11 +34,11 @@ public class TxtToDocxConverter {
 
     public void convert(Path inputTxt, Path outputDocx) throws IOException {
         Charset charset = resolveCharset(inputTxt);
-        String text = readText(inputTxt, charset);
+        List<String> rawLines = readLines(inputTxt, charset);
         try (XWPFDocument doc = new XWPFDocument();
              OutputStream out = Files.newOutputStream(outputDocx)) {
             applyPageMargins(doc);
-            writeParagraphs(doc, formatText(text));
+            writeParagraphs(doc, TextFormatter.formatLines(rawLines, options));
             doc.write(out);
         }
     }
@@ -49,10 +51,30 @@ public class TxtToDocxConverter {
         return Charset.forName(encoding);
     }
 
-    private String readText(Path inputTxt, Charset charset) throws IOException {
-        byte[] all = Files.readAllBytes(inputTxt);
-        int skip = EncodingDetector.skipBom(all, charset);
-        return new String(all, skip, all.length - skip, charset);
+    private List<String> readLines(Path inputTxt, Charset charset) throws IOException {
+        List<String> lines = new ArrayList<>();
+        try (InputStream raw = Files.newInputStream(inputTxt);
+             PushbackInputStream in = new PushbackInputStream(raw, 4)) {
+            // Strip BOM at the byte level — Files.newBufferedReader leaves U+FEFF in the
+            // stream for UTF-8 / UTF-16 callers, which would surface as a leading invisible
+            // char in the first paragraph.
+            byte[] head = new byte[3];
+            int n = in.read(head);
+            int present = Math.max(0, n);
+            int skip = present > 0
+                    ? EncodingDetector.skipBom(Arrays.copyOf(head, present), charset)
+                    : 0;
+            if (present - skip > 0) {
+                in.unread(head, skip, present - skip);
+            }
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(in, charset))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    lines.add(line);
+                }
+            }
+        }
+        return lines;
     }
 
     private void applyPageMargins(XWPFDocument doc) {
@@ -64,17 +86,6 @@ public class TxtToDocxConverter {
         pageMar.setBottom(BigInteger.valueOf(cmToTwips(options.getMarginBottomCm())));
         pageMar.setLeft(BigInteger.valueOf(cmToTwips(options.getMarginLeftCm())));
         pageMar.setRight(BigInteger.valueOf(cmToTwips(options.getMarginRightCm())));
-    }
-
-    private List<String> formatText(String text) throws IOException {
-        try (BufferedReader reader = new BufferedReader(new StringReader(text))) {
-            List<String> lines = new ArrayList<>();
-            String line;
-            while ((line = reader.readLine()) != null) {
-                lines.add(line);
-            }
-            return TextFormatter.formatLines(lines, options);
-        }
     }
 
     private void writeParagraphs(XWPFDocument doc, List<String> lines) {
@@ -98,6 +109,7 @@ public class TxtToDocxConverter {
     private void applyFont(XWPFRun run) {
         String font = options.getFontFamily();
         run.setFontFamily(font);
+        run.setFontFamily(font, XWPFRun.FontCharRange.eastAsia);
         run.setFontSize(options.getFontSize());
     }
 

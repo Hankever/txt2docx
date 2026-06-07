@@ -1,5 +1,6 @@
 package com.tools.txt2docx.cli;
 
+import com.tools.txt2docx.batch.ConflictPolicy;
 import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.converter.ConversionOptions;
 
@@ -11,7 +12,7 @@ public record CliArguments(
         Path outputDir,
         ConversionMode mode,
         boolean recursive,
-        boolean overwrite,
+        ConflictPolicy onConflict,
         boolean preserveDirectoryStructure,
         boolean showHelp,
         ConversionOptions options

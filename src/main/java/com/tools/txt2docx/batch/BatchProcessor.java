@@ -12,7 +12,11 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReferenceArray;
 import java.util.stream.Stream;
 
 public class BatchProcessor {
@@ -21,17 +25,34 @@ public class BatchProcessor {
         void onProgress(int doneCount, int totalCount, ConversionResult lastResult);
     }
 
+    private static final int MAX_PARALLELISM = 8;
+
     private final ConversionOptions options;
     private final ConversionMode mode;
+    private final int parallelism;
     private volatile boolean cancelled;
+    private volatile ExecutorService activeExecutor;
 
     public BatchProcessor(ConversionOptions options, ConversionMode mode) {
+        this(options, mode, defaultParallelism());
+    }
+
+    BatchProcessor(ConversionOptions options, ConversionMode mode, int parallelism) {
         this.options = options;
         this.mode = mode;
+        this.parallelism = Math.max(1, parallelism);
+    }
+
+    private static int defaultParallelism() {
+        return Math.max(1, Math.min(MAX_PARALLELISM, Runtime.getRuntime().availableProcessors()));
     }
 
     public void cancel() {
         this.cancelled = true;
+        ExecutorService e = activeExecutor;
+        if (e != null) {
+            e.shutdownNow();
+        }
     }
 
     public List<BatchItem> collectFiles(List<Path> inputs, boolean recursive, boolean preserveDirectoryStructure) throws IOException {
@@ -54,15 +75,38 @@ public class BatchProcessor {
 
     public List<ConversionResult> process(List<BatchItem> files,
                                           Path outputDir,
-                                          boolean overwrite,
+                                          ConflictPolicy policy,
                                           ProgressListener listener) {
-        List<ConversionResult> results = new ArrayList<>();
-        Set<Path> reservedTargets = new HashSet<>();
         int total = files.size();
-        int done = 0;
+        if (total == 0) return new ArrayList<>();
+
+        // Phase 1: resolve all targets sequentially. uniquify must see a deterministic
+        // reservation order — otherwise parallel runs would race on the same target name.
+        List<PlannedItem> plan = new ArrayList<>(total);
+        Set<Path> reservedTargets = new HashSet<>();
         for (BatchItem item : files) {
+            try {
+                ResolvedTarget t = resolveOutput(item, outputDir, policy, reservedTargets);
+                plan.add(new PlannedItem(item, t, null));
+            } catch (Exception e) {
+                plan.add(new PlannedItem(item, null, e));
+            }
+        }
+
+        // Phase 2: execute. Single file or single core stays sequential to skip the
+        // executor overhead.
+        if (parallelism == 1 || total == 1) {
+            return runSequentially(plan, total, listener);
+        }
+        return runInParallel(plan, total, listener);
+    }
+
+    private List<ConversionResult> runSequentially(List<PlannedItem> plan, int total, ProgressListener listener) {
+        List<ConversionResult> results = new ArrayList<>(plan.size());
+        int done = 0;
+        for (PlannedItem p : plan) {
             if (cancelled) break;
-            ConversionResult r = convertOne(item, outputDir, overwrite, reservedTargets);
+            ConversionResult r = executePlanned(p);
             results.add(r);
             done++;
             if (listener != null) listener.onProgress(done, total, r);
@@ -70,18 +114,68 @@ public class BatchProcessor {
         return results;
     }
 
-    private ConversionResult convertOne(BatchItem item,
-                                        Path outputDir,
-                                        boolean overwrite,
-                                        Set<Path> reservedTargets) {
+    private List<ConversionResult> runInParallel(List<PlannedItem> plan, int total, ProgressListener listener) {
+        int threads = Math.min(parallelism, plan.size());
+        ExecutorService executor = Executors.newFixedThreadPool(threads, runnable -> {
+            Thread t = new Thread(runnable, "txt2docx-worker");
+            t.setDaemon(true);
+            return t;
+        });
+        activeExecutor = executor;
+        AtomicInteger counter = new AtomicInteger();
+        AtomicReferenceArray<ConversionResult> resultsArr = new AtomicReferenceArray<>(plan.size());
         try {
-            ResolvedTarget resolvedTarget = resolveOutput(item, outputDir, overwrite, reservedTargets);
-            Path target = resolvedTarget.path();
-            Files.createDirectories(target.getParent());
-            convertFile(item.source(), target);
-            return new ConversionResult(item.source(), target, ConversionResult.Status.SUCCESS, resolvedTarget.message());
+            List<Future<?>> futures = new ArrayList<>(plan.size());
+            for (int i = 0; i < plan.size(); i++) {
+                int idx = i;
+                PlannedItem p = plan.get(i);
+                futures.add(executor.submit(() -> {
+                    if (cancelled || Thread.currentThread().isInterrupted()) return;
+                    ConversionResult r = executePlanned(p);
+                    resultsArr.set(idx, r);
+                    int done = counter.incrementAndGet();
+                    if (listener != null) listener.onProgress(done, total, r);
+                }));
+            }
+            for (Future<?> f : futures) {
+                try {
+                    f.get();
+                } catch (Exception ignored) {
+                    // Cancellation surfaces as InterruptedException / CancellationException —
+                    // already-recorded results in resultsArr are still returned.
+                }
+            }
+        } finally {
+            executor.shutdown();
+            activeExecutor = null;
+        }
+
+        List<ConversionResult> results = new ArrayList<>(plan.size());
+        for (int i = 0; i < resultsArr.length(); i++) {
+            ConversionResult r = resultsArr.get(i);
+            if (r != null) results.add(r);
+        }
+        return results;
+    }
+
+    private ConversionResult executePlanned(PlannedItem p) {
+        if (p.error() != null) {
+            return new ConversionResult(p.item().source(), null,
+                    ConversionResult.Status.FAILED, p.error().getMessage());
+        }
+        ResolvedTarget t = p.target();
+        if (t.skip()) {
+            return new ConversionResult(p.item().source(), t.path(),
+                    ConversionResult.Status.SKIPPED, t.message());
+        }
+        try {
+            Files.createDirectories(t.path().getParent());
+            convertFile(p.item().source(), t.path());
+            return new ConversionResult(p.item().source(), t.path(),
+                    ConversionResult.Status.SUCCESS, t.message());
         } catch (Exception e) {
-            return new ConversionResult(item.source(), null, ConversionResult.Status.FAILED, e.getMessage());
+            return new ConversionResult(p.item().source(), null,
+                    ConversionResult.Status.FAILED, e.getMessage());
         }
     }
 
@@ -108,24 +202,28 @@ public class BatchProcessor {
 
     private ResolvedTarget resolveOutput(BatchItem item,
                                          Path outputDir,
-                                         boolean overwrite,
+                                         ConflictPolicy policy,
                                          Set<Path> reservedTargets) throws IOException {
         Path requested = outputDir.resolve(item.relativeOutput()).normalize();
-        boolean existed = Files.exists(requested);
-        Path selected = requested;
+        boolean reserved = reservedTargets.contains(requested);
+        boolean existedOnDisk = Files.exists(requested);
 
-        if (reservedTargets.contains(selected) || (!overwrite && existed)) {
-            selected = uniquify(requested, reservedTargets);
+        // SKIP only honors on-disk collisions. A same-batch reservation must still produce
+        // output, otherwise two inputs sharing a name would both silently disappear.
+        if (existedOnDisk && !reserved && policy == ConflictPolicy.SKIP) {
+            return new ResolvedTarget(requested, true, "目标已存在，跳过");
         }
-
-        reservedTargets.add(selected);
-        if (!selected.equals(requested)) {
-            return new ResolvedTarget(selected, "目标重名，已自动重命名");
+        if (existedOnDisk && !reserved && policy == ConflictPolicy.OVERWRITE) {
+            reservedTargets.add(requested);
+            return new ResolvedTarget(requested, false, "已覆盖已有文件");
         }
-        if (overwrite && existed) {
-            return new ResolvedTarget(selected, "已覆盖已有文件");
+        if (reserved || existedOnDisk) {
+            Path selected = uniquify(requested, reservedTargets);
+            reservedTargets.add(selected);
+            return new ResolvedTarget(selected, false, "目标重名，已自动重命名");
         }
-        return new ResolvedTarget(selected, "OK");
+        reservedTargets.add(requested);
+        return new ResolvedTarget(requested, false, "OK");
     }
 
     private Path uniquify(Path requested, Set<Path> reservedTargets) throws IOException {
@@ -171,10 +269,9 @@ public class BatchProcessor {
         return n.endsWith(".docx");
     }
 
-    public static void forEachInput(List<Path> paths, Consumer<Path> consumer) {
-        paths.forEach(consumer);
+    private record ResolvedTarget(Path path, boolean skip, String message) {
     }
 
-    private record ResolvedTarget(Path path, String message) {
+    private record PlannedItem(BatchItem item, ResolvedTarget target, Exception error) {
     }
 }

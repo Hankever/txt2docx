@@ -2,6 +2,7 @@ package com.tools.txt2docx.cli;
 
 import com.tools.txt2docx.batch.BatchItem;
 import com.tools.txt2docx.batch.BatchProcessor;
+import com.tools.txt2docx.batch.ConflictPolicy;
 import com.tools.txt2docx.batch.ConversionMode;
 import com.tools.txt2docx.batch.ConversionResult;
 import com.tools.txt2docx.converter.ConversionOptions;
@@ -50,7 +51,7 @@ public final class CliRunner {
             List<ConversionResult> results = processor.process(
                     items,
                     cliArgs.outputDir(),
-                    cliArgs.overwrite(),
+                    cliArgs.onConflict(),
                     (done, total, last) -> out.println(formatProgress(done, total, last))
             );
             return printSummary(results, cliArgs.outputDir(), out);
@@ -102,7 +103,7 @@ public final class CliRunner {
         Path outputDir = null;
         ConversionMode mode = ConversionMode.TXT_TO_DOCX;
         boolean recursive = false;
-        boolean overwrite = false;
+        ConflictPolicy onConflict = ConflictPolicy.AUTO_RENAME;
         boolean preserveDirectoryStructure = true;
         boolean showHelp = false;
 
@@ -116,7 +117,8 @@ public final class CliRunner {
                 case "-o", "--output" -> outputDir = Path.of(requireValue(args, ++i, arg));
                 case "--mode" -> mode = parseMode(args, ++i, arg);
                 case "-r", "--recursive" -> recursive = true;
-                case "--overwrite" -> overwrite = true;
+                case "--overwrite" -> onConflict = ConflictPolicy.OVERWRITE;
+                case "--on-conflict" -> onConflict = parseConflictPolicy(args, ++i, arg);
                 case "--flatten" -> preserveDirectoryStructure = false;
                 case "--preserve-tree" -> preserveDirectoryStructure = true;
                 case "--encoding" -> options.setEncoding(requireValue(args, ++i, arg));
@@ -143,7 +145,17 @@ public final class CliRunner {
             }
         }
 
-        return new CliArguments(inputs, outputDir, mode, recursive, overwrite, preserveDirectoryStructure, showHelp, options);
+        return new CliArguments(inputs, outputDir, mode, recursive, onConflict, preserveDirectoryStructure, showHelp, options);
+    }
+
+    private static ConflictPolicy parseConflictPolicy(String[] args, int index, String option) {
+        String value = requireValue(args, index, option);
+        return switch (value.toLowerCase()) {
+            case "rename", "auto-rename", "auto_rename" -> ConflictPolicy.AUTO_RENAME;
+            case "overwrite" -> ConflictPolicy.OVERWRITE;
+            case "skip" -> ConflictPolicy.SKIP;
+            default -> throw new IllegalArgumentException(option + " 仅支持 rename / overwrite / skip: " + value);
+        };
     }
 
     private static String requireValue(String[] args, int index, String option) {
@@ -208,7 +220,8 @@ public final class CliRunner {
         out.println("  -o, --output <dir>      输出目录");
         out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt");
         out.println("  -r, --recursive         递归扫描子目录");
-        out.println("      --overwrite         允许覆盖已存在的输出文件");
+        out.println("      --overwrite         冲突时覆盖已存在文件 (等价 --on-conflict overwrite)");
+        out.println("      --on-conflict <p>   冲突策略: rename(默认) / overwrite / skip");
         out.println("      --flatten           不保留输入目录结构");
         out.println("      --preserve-tree     保留输入目录结构，默认开启");
         out.println("      --encoding <name>   文本编码，默认 AUTO");
