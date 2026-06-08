@@ -226,7 +226,8 @@ public final class CliRunner {
             case "txt2docx", "txt-to-docx" -> ConversionMode.TXT_TO_DOCX;
             case "docx2txt", "docx-to-txt" -> ConversionMode.DOCX_TO_TXT;
             case "epub2docx", "epub-to-docx" -> ConversionMode.EPUB_TO_DOCX;
-            default -> throw new IllegalArgumentException(option + " 仅支持 txt2docx / docx2txt / epub2docx: " + value);
+            case "epub2txt", "epub-to-txt" -> ConversionMode.EPUB_TO_TXT;
+            default -> throw new IllegalArgumentException(option + " 仅支持 txt2docx / docx2txt / epub2docx / epub2txt: " + value);
         };
     }
 
@@ -241,11 +242,12 @@ public final class CliRunner {
         out.println("  java -jar target/txt2docx.jar --input ./txt --output ./docx --recursive");
         out.println("  java -jar target/txt2docx.jar --mode docx2txt -i a.docx -o ./out --encoding UTF-8");
         out.println("  java -jar target/txt2docx.jar --mode epub2docx -i ./epub -o ./docx --recursive");
+        out.println("  java -jar target/txt2docx.jar --mode epub2txt -i ./epub -o ./txt --recursive");
         out.println();
         out.println("参数:");
         out.println("  -i, --input <path>       输入文件或目录，可重复");
         out.println("  -o, --output <dir>      输出目录");
-        out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt / epub2docx");
+        out.println("      --mode <name>        转换方向: txt2docx(默认) / docx2txt / epub2docx / epub2txt");
         out.println("  -r, --recursive         递归扫描子目录");
         out.println("      --overwrite         冲突时覆盖已存在文件 (等价 --on-conflict overwrite)");
         out.println("      --on-conflict <p>   冲突策略: rename(默认) / overwrite / skip");

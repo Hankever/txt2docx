@@ -150,6 +150,28 @@ class CliRunnerTest {
     }
 
     @Test
+    void endToEndConvertsEpubToTxt(@TempDir Path root) throws IOException {
+        Path inputs = root.resolve("in");
+        Path outputs = root.resolve("out");
+        Files.createDirectories(inputs);
+        writeMinimalEpub(inputs.resolve("book.epub"));
+
+        Captured c = run(
+                "--mode", "epub2txt",
+                "--input", inputs.toString(),
+                "--output", outputs.toString(),
+                "--flatten"
+        );
+
+        assertEquals(0, c.exit, "expected success exit, got " + c.exit + " | err: " + c.err);
+        Path txt = outputs.resolve("book.txt");
+        assertTrue(Files.exists(txt), "expected EPUB output txt");
+        assertTrue(Files.readString(txt, StandardCharsets.UTF_8).contains("正文"), "expected txt body content");
+        assertTrue(c.out.contains("共找到 1 个 .epub 文件"), "expected epub progress text, got: " + c.out);
+        assertTrue(c.out.contains("成功: 1"), "expected summary success count, got: " + c.out);
+    }
+
+    @Test
     void overwriteFlagIsAliasForOnConflictOverwrite(@TempDir Path root) throws IOException {
         Path inputs = root.resolve("in");
         Path outputs = root.resolve("out");

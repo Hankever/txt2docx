@@ -3,7 +3,8 @@ package com.tools.txt2docx.batch;
 public enum ConversionMode {
     TXT_TO_DOCX(".txt", ".docx"),
     DOCX_TO_TXT(".docx", ".txt"),
-    EPUB_TO_DOCX(".epub", ".docx");
+    EPUB_TO_DOCX(".epub", ".docx"),
+    EPUB_TO_TXT(".epub", ".txt");
 
     private final String sourceExtension;
     private final String targetExtension;

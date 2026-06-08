@@ -302,7 +302,7 @@ public class MainFrame extends JFrame {
         switch (optionsPanel.getMode()) {
             case DOCX_TO_TXT ->
                     fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("Word 文件 (*.docx)", "docx"));
-            case EPUB_TO_DOCX ->
+            case EPUB_TO_DOCX, EPUB_TO_TXT ->
                     fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("EPUB 文件 (*.epub)", "epub"));
             case TXT_TO_DOCX ->
                     fc.setFileFilter(new javax.swing.filechooser.FileNameExtensionFilter("文本文件 (*.txt)", "txt"));
@@ -555,12 +555,13 @@ public class MainFrame extends JFrame {
         ConversionMode mode = optionsPanel.getMode();
         addFilesBtn.setText(switch (mode) {
             case DOCX_TO_TXT -> "添加 DOCX...";
-            case EPUB_TO_DOCX -> "添加 EPUB...";
+            case EPUB_TO_DOCX, EPUB_TO_TXT -> "添加 EPUB...";
             case TXT_TO_DOCX -> "添加 TXT...";
         });
         setTitle(switch (mode) {
             case DOCX_TO_TXT -> "DOCX 批量转 TXT 工具";
             case EPUB_TO_DOCX -> "EPUB 批量转 DOCX 工具";
+            case EPUB_TO_TXT -> "EPUB 批量转 TXT 工具";
             case TXT_TO_DOCX -> "TXT 批量转 DOCX 工具";
         });
     }

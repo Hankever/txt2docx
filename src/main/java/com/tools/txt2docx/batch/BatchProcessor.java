@@ -3,6 +3,7 @@ package com.tools.txt2docx.batch;
 import com.tools.txt2docx.converter.ConversionOptions;
 import com.tools.txt2docx.converter.DocxToTxtConverter;
 import com.tools.txt2docx.converter.EpubToDocxConverter;
+import com.tools.txt2docx.converter.EpubToTxtConverter;
 import com.tools.txt2docx.converter.TxtToDocxConverter;
 
 import java.io.IOException;
@@ -202,6 +203,7 @@ public class BatchProcessor {
         switch (mode) {
             case DOCX_TO_TXT -> new DocxToTxtConverter(options).convert(source, target);
             case EPUB_TO_DOCX -> new EpubToDocxConverter(options).convert(source, target);
+            case EPUB_TO_TXT -> new EpubToTxtConverter(options).convert(source, target);
             case TXT_TO_DOCX -> new TxtToDocxConverter(options).convert(source, target);
         }
     }

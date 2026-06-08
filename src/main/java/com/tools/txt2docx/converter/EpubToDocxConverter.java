@@ -92,7 +92,11 @@ public class EpubToDocxConverter {
         }
     }
 
-    private List<DocxContentBlock> readEpubBlocks(ZipFile zip) throws IOException {
+    List<DocxContentBlock> readEpubBlocks(ZipFile zip) throws IOException {
+        return readEpubBlocks(zip, true);
+    }
+
+    List<DocxContentBlock> readEpubBlocks(ZipFile zip, boolean includeImageAltFallback) throws IOException {
         String opfPath = readPackagePath(zip);
         List<ManifestItem> spine = readSpine(zip, opfPath);
         List<DocxContentBlock> blocks = new ArrayList<>();
@@ -101,7 +105,7 @@ public class EpubToDocxConverter {
                 continue;
             }
             byte[] content = readEntry(zip, item.path());
-            List<DocxContentBlock> contentBlocks = extractContentBlocks(content, item.path(), zip);
+            List<DocxContentBlock> contentBlocks = extractContentBlocks(content, item.path(), zip, includeImageAltFallback);
             if (!blocks.isEmpty() && !contentBlocks.isEmpty()) {
                 blocks.add(new DocxTextBlock(""));
             }
@@ -165,22 +169,28 @@ public class EpubToDocxConverter {
                 || path.endsWith(".htm");
     }
 
-    private static List<DocxContentBlock> extractContentBlocks(byte[] content, String path, ZipFile zip) {
+    private static List<DocxContentBlock> extractContentBlocks(byte[] content,
+                                                               String path,
+                                                               ZipFile zip,
+                                                               boolean includeImageAltFallback) {
         try {
-            return extractXhtmlBlocks(parseXml(content, path), path, zip);
+            return extractXhtmlBlocks(parseXml(content, path), path, zip, includeImageAltFallback);
         } catch (IOException | RuntimeException ignored) {
             // DOM traversal in extractXhtmlBlocks can throw RuntimeExceptions on dirty input
             // (e.g. unexpected null/typed nodes). Falling back to the regex-based HTML pass
             // keeps a single bad chapter from failing the whole EPUB.
-            return extractHtmlBlocks(content, path, zip);
+            return extractHtmlBlocks(content, path, zip, includeImageAltFallback);
         }
     }
 
-    private static List<DocxContentBlock> extractXhtmlBlocks(Document doc, String path, ZipFile zip) {
+    private static List<DocxContentBlock> extractXhtmlBlocks(Document doc,
+                                                             String path,
+                                                             ZipFile zip,
+                                                             boolean includeImageAltFallback) {
         List<DocxContentBlock> blocks = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         Element body = firstElement(doc, "body");
-        appendNode(body == null ? doc.getDocumentElement() : body, blocks, current, path, zip);
+        appendNode(body == null ? doc.getDocumentElement() : body, blocks, current, path, zip, includeImageAltFallback);
         flushTextBlock(blocks, current);
         return blocks;
     }
@@ -189,13 +199,14 @@ public class EpubToDocxConverter {
                                    List<DocxContentBlock> blocks,
                                    StringBuilder current,
                                    String basePath,
-                                   ZipFile zip) {
+                                   ZipFile zip,
+                                   boolean includeImageAltFallback) {
         if (node == null) {
             return;
         }
         switch (node.getNodeType()) {
             case Node.TEXT_NODE, Node.CDATA_SECTION_NODE -> appendText(current, node.getNodeValue());
-            case Node.ELEMENT_NODE -> appendElement((Element) node, blocks, current, basePath, zip);
+            case Node.ELEMENT_NODE -> appendElement((Element) node, blocks, current, basePath, zip, includeImageAltFallback);
             default -> {
             }
         }
@@ -205,7 +216,8 @@ public class EpubToDocxConverter {
                                       List<DocxContentBlock> blocks,
                                       StringBuilder current,
                                       String basePath,
-                                      ZipFile zip) {
+                                      ZipFile zip,
+                                      boolean includeImageAltFallback) {
         String name = localName(element);
         if (isIgnoredElement(name)) {
             return;
@@ -215,7 +227,8 @@ public class EpubToDocxConverter {
             return;
         }
         if ("img".equals(name)) {
-            appendImage(element.getAttribute("src"), element.getAttribute("alt"), blocks, current, basePath, zip);
+            appendImage(element.getAttribute("src"), element.getAttribute("alt"),
+                    blocks, current, basePath, zip, includeImageAltFallback);
             return;
         }
         if ("image".equals(name)) {
@@ -223,7 +236,8 @@ public class EpubToDocxConverter {
             if (href.isBlank()) {
                 href = element.getAttribute("xlink:href");
             }
-            appendImage(href, element.getAttribute("alt"), blocks, current, basePath, zip);
+            appendImage(href, element.getAttribute("alt"),
+                    blocks, current, basePath, zip, includeImageAltFallback);
             return;
         }
 
@@ -233,7 +247,7 @@ public class EpubToDocxConverter {
         }
         NodeList children = element.getChildNodes();
         for (int i = 0; i < children.getLength(); i++) {
-            appendNode(children.item(i), blocks, current, basePath, zip);
+            appendNode(children.item(i), blocks, current, basePath, zip, includeImageAltFallback);
         }
         if (block) {
             flushTextBlock(blocks, current);
@@ -245,11 +259,12 @@ public class EpubToDocxConverter {
                                     List<DocxContentBlock> blocks,
                                     StringBuilder current,
                                     String basePath,
-                                    ZipFile zip) {
+                                    ZipFile zip,
+                                    boolean includeImageAltFallback) {
         flushTextBlock(blocks, current);
         ImageResource image = readImageResource(zip, basePath, src);
         if (image == null) {
-            if (alt != null && !alt.isBlank()) {
+            if (includeImageAltFallback && alt != null && !alt.isBlank()) {
                 blocks.add(new DocxTextBlock(alt));
             }
             return;
@@ -297,7 +312,10 @@ public class EpubToDocxConverter {
         current.setLength(0);
     }
 
-    private static List<DocxContentBlock> extractHtmlBlocks(byte[] content, String path, ZipFile zip) {
+    private static List<DocxContentBlock> extractHtmlBlocks(byte[] content,
+                                                            String path,
+                                                            ZipFile zip,
+                                                            boolean includeImageAltFallback) {
         String html = new String(content, detectDeclaredCharset(content));
         List<DocxContentBlock> blocks = new ArrayList<>();
         Matcher matcher = IMG_TAG.matcher(html);
@@ -307,7 +325,7 @@ public class EpubToDocxConverter {
             Map<String, String> attrs = parseHtmlAttributes(matcher.group(1));
             String src = attrs.getOrDefault("src", "");
             String alt = attrs.getOrDefault("alt", "");
-            appendImage(src, alt, blocks, new StringBuilder(), path, zip);
+            appendImage(src, alt, blocks, new StringBuilder(), path, zip, includeImageAltFallback);
             start = matcher.end();
         }
         appendHtmlTextBlocks(html.substring(start), blocks);
