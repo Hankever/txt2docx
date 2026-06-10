@@ -1,10 +1,12 @@
 package com.tools.txt2docx.converter;
 
+import org.apache.poi.openxml4j.exceptions.InvalidFormatException;
+import org.apache.poi.openxml4j.opc.OPCPackage;
+import org.apache.poi.openxml4j.opc.PackageAccess;
 import org.apache.poi.xwpf.extractor.XWPFWordExtractor;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 import java.io.IOException;
-import java.io.InputStream;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -22,12 +24,14 @@ public class DocxToTxtConverter {
 
     public void convert(Path inputDocx, Path outputTxt) throws IOException {
         String raw;
-        try (InputStream in = Files.newInputStream(inputDocx);
-             XWPFDocument doc = new XWPFDocument(in);
+        try (OPCPackage pkg = OPCPackage.open(inputDocx.toFile(), PackageAccess.READ);
+             XWPFDocument doc = new XWPFDocument(pkg);
              XWPFWordExtractor extractor = new XWPFWordExtractor(doc)) {
             // Extractor pulls paragraphs, table cells (tab-separated), headers, footers,
             // footnotes, endnotes, and list numbering — everything getParagraphs() dropped.
             raw = extractor.getText();
+        } catch (InvalidFormatException e) {
+            throw new IOException("Invalid DOCX package: " + inputDocx, e);
         }
 
         List<String> lines = splitLines(raw);
