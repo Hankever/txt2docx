@@ -57,7 +57,6 @@ class DocxToTxtConverterTest {
 
     @Test
     void tableContentIsExtracted(@TempDir Path dir) throws IOException {
-        // Regression test for the prior bug: getParagraphs() silently dropped table cells.
         Path src = dir.resolve("table.docx");
         try (XWPFDocument doc = new XWPFDocument();
              OutputStream out = Files.newOutputStream(src)) {
