@@ -137,8 +137,6 @@ public final class EncodingDetector {
                     .onMalformedInput(CodingErrorAction.REPORT)
                     .onUnmappableCharacter(CodingErrorAction.REPORT)
                     .decode(ByteBuffer.wrap(bytes));
-            // Pure ASCII would also pass UTF-8 strict decoding. That's fine: ASCII is a subset
-            // of UTF-8, and the resulting Charset is interchangeable for the actual file body.
             return true;
         } catch (CharacterCodingException e) {
             return false;
