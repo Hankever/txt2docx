@@ -11,6 +11,7 @@ import java.nio.charset.CodingErrorAction;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Arrays;
 
 public final class EncodingDetector {
 
@@ -32,6 +33,14 @@ public final class EncodingDetector {
         if (head.length >= 2 && (head[0] & 0xFF) == 0xFE && (head[1] & 0xFF) == 0xFF) {
             return StandardCharsets.UTF_16BE;
         }
+        Charset bomlessUtf16 = detectBomlessUtf16(head);
+        if (bomlessUtf16 != null) {
+            return bomlessUtf16;
+        }
+        Charset detectedByLibrary = detectWithLibrary(head);
+        if (detectedByLibrary != null && isUtf16Family(detectedByLibrary)) {
+            return detectedByLibrary;
+        }
         // BOMless UTF-8 is the most common case for files saved by modern editors. Try strict
         // decode first — if it succeeds, trust UTF-8 regardless of what the heuristic guesses.
         // Trim to the last complete UTF-8 sequence so a multi-byte char straddling the 8192-byte
@@ -39,23 +48,14 @@ public final class EncodingDetector {
         if (isStrictlyDecodable(trimToUtf8Boundary(head), StandardCharsets.UTF_8)) {
             return StandardCharsets.UTF_8;
         }
-        UniversalDetector detector = new UniversalDetector(null);
-        detector.handleData(head, 0, head.length);
-        detector.dataEnd();
-        String encoding = detector.getDetectedCharset();
-        detector.reset();
-        if (encoding != null) {
-            try {
-                Charset c = Charset.forName(encoding);
-                // juniversalchardet often mis-identifies short Simplified Chinese (GBK) samples
-                // as KOI8-R / windows-12xx / ISO-8859-x. When the file clearly contains 8-bit
-                // bytes and the guess is a Western single-byte charset, prefer GBK instead.
-                if (looksLikeCjkMisidentification(c, head)) {
-                    return FALLBACK_CJK;
-                }
-                return c;
-            } catch (Exception ignored) {
+        if (detectedByLibrary != null) {
+            // juniversalchardet often mis-identifies short Simplified Chinese (GBK) samples
+            // as KOI8-R / windows-12xx / ISO-8859-x. When the file clearly contains 8-bit
+            // bytes and the guess is a Western single-byte charset, prefer GBK instead.
+            if (looksLikeCjkMisidentification(detectedByLibrary, head)) {
+                return FALLBACK_CJK;
             }
+            return detectedByLibrary;
         }
         return FALLBACK_CJK;
     }
@@ -70,6 +70,38 @@ public final class EncodingDetector {
             return 2;
         }
         return 0;
+    }
+
+    private static Charset detectBomlessUtf16(byte[] bytes) {
+        int evenLength = bytes.length - bytes.length % 2;
+        if (evenLength < 4) {
+            return null;
+        }
+        byte[] sample = evenLength == bytes.length ? bytes : Arrays.copyOf(bytes, evenLength);
+        return detectUtf16ByZeroPattern(sample);
+    }
+
+    private static Charset detectUtf16ByZeroPattern(byte[] bytes) {
+        int pairs = bytes.length / 2;
+        int evenZero = 0;
+        int oddZero = 0;
+        for (int i = 0; i < bytes.length; i += 2) {
+            if (bytes[i] == 0) {
+                evenZero++;
+            }
+            if (bytes[i + 1] == 0) {
+                oddZero++;
+            }
+        }
+        double evenRatio = evenZero / (double) pairs;
+        double oddRatio = oddZero / (double) pairs;
+        if (oddRatio >= 0.30 && evenRatio <= 0.05) {
+            return StandardCharsets.UTF_16LE;
+        }
+        if (evenRatio >= 0.30 && oddRatio <= 0.05) {
+            return StandardCharsets.UTF_16BE;
+        }
+        return null;
     }
 
     private static byte[] trimToUtf8Boundary(byte[] bytes) {
@@ -111,6 +143,27 @@ public final class EncodingDetector {
         } catch (CharacterCodingException e) {
             return false;
         }
+    }
+
+    private static Charset detectWithLibrary(byte[] head) {
+        UniversalDetector detector = new UniversalDetector(null);
+        detector.handleData(head, 0, head.length);
+        detector.dataEnd();
+        String encoding = detector.getDetectedCharset();
+        detector.reset();
+        if (encoding == null) {
+            return null;
+        }
+        try {
+            return CharsetSupport.toCharset(encoding);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    private static boolean isUtf16Family(Charset charset) {
+        String name = charset.name().toUpperCase();
+        return name.equals("UTF-16") || name.equals("UTF-16LE") || name.equals("UTF-16BE");
     }
 
     private static boolean looksLikeCjkMisidentification(Charset detected, byte[] head) {

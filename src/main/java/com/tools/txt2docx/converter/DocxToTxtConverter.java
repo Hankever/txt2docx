@@ -8,7 +8,6 @@ import org.apache.poi.xwpf.usermodel.XWPFDocument;
 
 import java.io.IOException;
 import java.nio.charset.Charset;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -61,10 +60,6 @@ public class DocxToTxtConverter {
     }
 
     private Charset resolveCharset() {
-        String encoding = options.getEncoding();
-        if (encoding == null || encoding.isBlank() || "AUTO".equalsIgnoreCase(encoding)) {
-            return StandardCharsets.UTF_8;
-        }
-        return Charset.forName(encoding);
+        return CharsetSupport.resolveOutputCharset(options.getEncoding());
     }
 }

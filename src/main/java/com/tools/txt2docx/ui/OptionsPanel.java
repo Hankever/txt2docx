@@ -35,7 +35,7 @@ public final class OptionsPanel extends JPanel {
     private final JSpinner marginLeftSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
     private final JSpinner marginRightSpinner = new JSpinner(new SpinnerNumberModel(3.18, 0.0, 10.0, 0.1));
     private final JSpinner indentSpinner = new JSpinner(new SpinnerNumberModel(2, 0, 10, 1));
-    private final JComboBox<String> encodingBox = new JComboBox<>(new String[]{"AUTO", "UTF-8", "GBK", "GB2312", "GB18030", "UTF-16LE", "UTF-16BE", "Big5"});
+    private final JComboBox<String> encodingBox = new JComboBox<>(new String[]{"AUTO", "UTF-8", "UTF-16", "UTF-16LE", "UTF-16BE", "GBK", "GB2312", "GB18030", "Big5"});
     private final JCheckBox recursiveBox = new JCheckBox("递归子目录", true);
     private final JCheckBox preserveTreeBox = new JCheckBox("保留目录结构", true);
     private final JComboBox<String> conflictBox = new JComboBox<>(new String[]{CONFLICT_RENAME, CONFLICT_OVERWRITE, CONFLICT_SKIP});
@@ -243,8 +243,9 @@ public final class OptionsPanel extends JPanel {
     }
 
     private static void setComboValue(JComboBox<String> comboBox, String value) {
+        String normalized = com.tools.txt2docx.converter.CharsetSupport.normalizeEncodingName(value);
         for (int i = 0; i < comboBox.getItemCount(); i++) {
-            if (comboBox.getItemAt(i).equals(value)) {
+            if (comboBox.getItemAt(i).equalsIgnoreCase(normalized)) {
                 comboBox.setSelectedIndex(i);
                 return;
             }
